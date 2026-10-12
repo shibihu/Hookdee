@@ -3,7 +3,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Hookdee — สคริปต์ที่ยังเป็นเสียงของคุณ",
-  description: "เครื่องมือช่วยรีวิวและพัฒนาสคริปต์วิดีโอสั้นให้เป็นธรรมชาติในแบบของคุณ",
+  description:
+    "รีวิว Hook, จังหวะ, ความชัดเจน และภาษาไทยของสคริปต์วิดีโอสั้น พร้อมแนวทางปรับให้พูดได้เป็นธรรมชาติ",
 };
 
 export default function RootLayout({

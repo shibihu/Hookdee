@@ -3,8 +3,10 @@
 Hookdee is a Thai-first workspace for reviewing and improving short-form video
 scripts. Phase 1 is being built milestone by milestone. The current foundation
 includes the Next.js app shell, typed server configuration, and the Prisma data
-model; the landing-page demo, authentication flow, AI coach, usage enforcement,
-and Stripe checkout are not implemented yet.
+model, Thai landing page, anonymous demo UI, and the server-side Claude review
+service. Authentication, saved projects, account usage enforcement, and Stripe
+checkout remain later milestones. The database migration must be applied before
+the demo can complete a review.
 
 ## Requirements
 
@@ -73,7 +75,32 @@ The migration command creates and applies the initial schema. After schema
 changes in later milestones, use the same script with a descriptive migration
 name, for example `npm run prisma:migrate:dev -- --name add_reviews`.
 
-### 4. Run checks and start Next.js
+### 4. Configure and try the anonymous Script Coach demo
+
+Set `ANTHROPIC_API_KEY` in `.env` to a server-side Anthropic API key. The key is
+never sent to the browser. The demo uses Claude Haiku for anonymous reviews,
+validates structured output with Zod, and logs token usage and estimated cost
+in PostgreSQL. It does not return mock review content when the database or
+Anthropic configuration is unavailable.
+
+The demo allows two attempts per IP and signed browser-device cookie. Hashed
+identifiers and attempt counts are stored in PostgreSQL, so the initial
+migration must be applied first. For production, deploy behind a trusted
+reverse proxy that overwrites `x-real-ip`; local development uses loopback
+when the request host is localhost. Do not trust caller-supplied forwarding
+headers.
+
+Start the app and open `http://localhost:3000`. Paste a script, optionally
+choose a niche and 15/30/60-second target, then submit it for review. The
+response includes five explained scores, exact quoted weak spots, and a spoken
+Thai rewrite. After the second allowed review, the page gates another review
+behind the sign-in page; account sign-in will be enabled in a later milestone.
+
+Estimated Claude token prices and the model selection are centralized in
+`src/lib/ai/model-config.ts`; revisit the estimate if Anthropic changes its
+published rates.
+
+### 5. Run checks and start Next.js
 
 ```powershell
 npm test
@@ -118,9 +145,9 @@ not part of the current foundation milestone.
 ## Project structure
 
 - `src/app/` — Next.js App Router pages and global styles
-- `src/lib/` — shared server-side helpers and validated configuration
+- `src/components/` — landing sections and the interactive review form
+- `src/lib/` — shared AI, demo rate-limit, i18n, and validated configuration
 - `prisma/` — PostgreSQL schema and migrations
-- `prompts/` — editable AI prompts, added with the Script Coach milestone
+- `prompts/` — editable AI prompts
 - `docs/superpowers/specs/` — approved product design
 - `docs/superpowers/plans/` — milestone implementation plans
-

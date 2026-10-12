@@ -1,8 +1,15 @@
 import { z } from "zod";
 
+export const ScriptNicheSchema = z.enum([
+  "review",
+  "lifestyle",
+  "education",
+  "tiktok_shop",
+]);
+
 export const ScriptCoachInputSchema = z.object({
   scriptText: z.string().trim().min(1).max(12_000),
-  niche: z.enum(["review", "lifestyle", "education", "tiktok_shop"]).optional(),
+  niche: ScriptNicheSchema.optional(),
   targetDurationSeconds: z.union([z.literal(15), z.literal(30), z.literal(60)]).optional(),
 });
 
@@ -26,8 +33,20 @@ export const ScriptCoachResultSchema = z.object({
   rewrite: z.string().trim().min(1).max(20_000),
 }).strict();
 
+export const DemoReviewSuccessSchema = z.object({
+  review: ScriptCoachResultSchema,
+  remaining: z.number().int().min(0).max(2),
+}).strict();
+
+export const DemoReviewErrorSchema = z.object({
+  code: z.string().min(1),
+  message: z.string().min(1).optional(),
+  loginUrl: z.string().startsWith("/").optional(),
+}).strict();
+
 export type ScriptCoachInput = z.infer<typeof ScriptCoachInputSchema>;
 export type ScriptCoachResult = z.infer<typeof ScriptCoachResultSchema>;
+export type ScriptNiche = z.infer<typeof ScriptNicheSchema>;
 
 export class InvalidScriptCoachOutputError extends Error {
   constructor() {

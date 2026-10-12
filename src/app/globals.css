@@ -6,8 +6,10 @@
 
 :root {
   color-scheme: light;
-  --background: #f8f7f4;
-  --foreground: #25231f;
+  --background: #fbfaf7;
+  --foreground: #201f1b;
+  --accent: #065f46;
+  --muted: #6b6961;
 }
 
 * {
@@ -19,4 +21,16 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: "IBM Plex Sans Thai", sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: #d1fae5;
+  color: #064e3b;
 }
