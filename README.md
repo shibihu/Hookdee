@@ -68,7 +68,7 @@ With PostgreSQL running and `.env` configured:
 ```powershell
 npm run prisma:validate
 npm run prisma:generate
-npm run prisma:migrate:dev -- --name foundation
+npm run prisma:migrate:dev -- --name init
 ```
 
 The migration command creates and applies the initial schema. After schema
@@ -151,3 +151,18 @@ not part of the current foundation milestone.
 - `prompts/` — editable AI prompts
 - `docs/superpowers/specs/` — approved product design
 - `docs/superpowers/plans/` — milestone implementation plans
+
+
+## Deploying to Supabase (Production)
+
+To apply Prisma migrations to a production Supabase PostgreSQL database:
+
+1. Obtain your Supabase database connection string from your Supabase Project Settings -> Database -> Connection string (URI).
+2. Set `DATABASE_URL` to your Supabase connection string (use the Direct connection port 5432 or Transaction pooler port 6543 with `?pgbouncer=true`).
+3. Apply pending migrations safely using the deployment script:
+
+```bash
+npm run prisma:migrate:deploy
+```
+
+4. In Vercel or CI/CD pipelines, configure `DATABASE_URL` in environment variables. The `postinstall` script (`prisma generate`) runs automatically during build.
