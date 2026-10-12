@@ -37,6 +37,21 @@ describe("consumeDemoAttempt", () => {
     ).resolves.toEqual({ allowed: false, remaining: 0 });
   });
 
+  it("handles concurrent requests safely without throwing", async () => {
+    const { store } = createMemoryStore();
+    const identifiers = { ip: "203.0.113.99", deviceId: "device-concurrent" };
+
+    const [res1, res2] = await Promise.all([
+      consumeDemoAttempt(identifiers, store, "test-secret"),
+      consumeDemoAttempt(identifiers, store, "test-secret"),
+    ]);
+
+    expect(res1.allowed).toBe(true);
+    expect(res2.allowed).toBe(true);
+    const results = [res1.remaining, res2.remaining].sort();
+    expect(results).toEqual([0, 1]);
+  });
+
   it("enforces the IP and device limits independently and hashes identifiers", async () => {
     const { store, subjects } = createMemoryStore();
 

@@ -25,3 +25,18 @@ it("returns a sanitized service-unavailable response for invalid server configur
     message: expect.any(String),
   });
 });
+
+it("handles requests with custom headers safely", async () => {
+  const response = await POST(
+    new Request("http://localhost/api/demo/review", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-real-ip": "203.0.113.100",
+      },
+      body: JSON.stringify({ scriptText: "สคริปต์ทดสอบ" }),
+    }),
+  );
+
+  expect(response.status).toBe(503);
+});

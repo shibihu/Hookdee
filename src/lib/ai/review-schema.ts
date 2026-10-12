@@ -71,8 +71,13 @@ export function parseScriptCoachResult(
     throw new InvalidScriptCoachOutputError();
   }
 
-  const sourceLines = input.scriptText.split(/\r?\n/);
-  if (!parsed.data.weakSpots.every(({ quote }) => sourceLines.includes(quote))) {
+  const sourceLines = input.scriptText.split(/\r?\n/).map((line) => line.trim());
+  if (
+    !parsed.data.weakSpots.every(({ quote }) => {
+      const trimmedQuote = quote.trim();
+      return trimmedQuote.length > 0 && sourceLines.includes(trimmedQuote);
+    })
+  ) {
     throw new InvalidScriptCoachOutputError();
   }
 

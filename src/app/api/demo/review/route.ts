@@ -1,4 +1,26 @@
-import { isIP } from "node:net";
+function isIpAddress(ip: string): boolean {
+  if (!ip) {
+    return false;
+  }
+
+  const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
+  if (ipv4Match) {
+    return ipv4Match.slice(1).every((octet) => {
+      const num = parseInt(octet, 10);
+      return num >= 0 && num <= 255 && octet === String(num);
+    });
+  }
+
+  if (ip.includes(":")) {
+    const parts = ip.split(":");
+    if (parts.length < 3 || parts.length > 8) {
+      return false;
+    }
+    return parts.every((part) => part === "" || /^[0-9a-fA-F]{1,4}$/.test(part));
+  }
+
+  return false;
+}
 import { getServerEnv } from "@/lib/env.server";
 import { createAnthropicGenerator } from "@/lib/ai/anthropic-client";
 import { reviewScript } from "@/lib/ai/script-coach";
@@ -14,14 +36,18 @@ export const runtime = "nodejs";
 
 function getTrustedClientIp(request: Request): string | null {
   const forwardedAddress = request.headers.get("x-real-ip")?.trim();
-  if (forwardedAddress && isIP(forwardedAddress) !== 0) {
+  if (forwardedAddress && isIpAddress(forwardedAddress)) {
     return forwardedAddress;
   }
 
   if (process.env.NODE_ENV !== "production") {
-    const hostname = new URL(request.url).hostname;
-    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
-      return "127.0.0.1";
+    try {
+      const hostname = new URL(request.url).hostname;
+      if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
+        return "127.0.0.1";
+      }
+    } catch {
+      return null;
     }
   }
 
