@@ -93,10 +93,10 @@ describe("reviewScript", () => {
     expect(calls).toBe(2);
     expect(logged).toHaveLength(2);
     expect(logged[0]).toMatchObject({
-      model: "claude-haiku-5-5",
+      model: "gemini-2.5-flash",
       inputTokens: 100,
       outputTokens: 80,
-      estimatedCostUsd: 0.00005,
+      estimatedCostUsd: 0.0000315,
       userId: null,
     });
     expect(logged[0].createdAt).toBeInstanceOf(Date);
@@ -117,7 +117,7 @@ describe("reviewScript", () => {
 
     expect(logged).toHaveLength(1);
     expect(logged[0]).toMatchObject({
-      model: "claude-haiku-5-5",
+      model: "gemini-2.5-flash",
       inputTokens: null,
       outputTokens: null,
       estimatedCostUsd: null,

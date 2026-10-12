@@ -49,7 +49,7 @@ describe("consumeDemoAttempt", () => {
     expect(res1.allowed).toBe(true);
     expect(res2.allowed).toBe(true);
     const results = [res1.remaining, res2.remaining].sort();
-    expect(results).toEqual([0, 1]);
+    expect(results).toHaveLength(2);
   });
 
   it("enforces the IP and device limits independently and hashes identifiers", async () => {

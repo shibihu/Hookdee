@@ -1,8 +1,8 @@
 import "server-only";
 
 import {
-  AnthropicConfigurationError,
-} from "../ai/anthropic-client";
+  GeminiConfigurationError,
+} from "../ai/gemini-client";
 import {
   ScriptCoachProviderError,
   ScriptCoachValidationError,
@@ -97,7 +97,7 @@ export async function handleDemoReview(
     );
   }
 
-  const existingDeviceId = readDemoDeviceId(
+  const existingDeviceId = await readDemoDeviceId(
     getCookieValue(request.headers.get("cookie"), DEMO_DEVICE_COOKIE_NAME),
     dependencies.secret,
   );
@@ -105,7 +105,7 @@ export async function handleDemoReview(
   const responseCookie = existingDeviceId
     ? null
     : serializeDemoDeviceCookie(
-        signDemoDeviceId(deviceId, dependencies.secret),
+        await signDemoDeviceId(deviceId, dependencies.secret),
         dependencies.isProduction,
       );
   const respond = (data: unknown, status: number): Response => {
@@ -142,7 +142,7 @@ export async function handleDemoReview(
       );
     }
 
-    if (error instanceof AnthropicConfigurationError) {
+    if (error instanceof GeminiConfigurationError) {
       dependencies.logError(error);
       return respond(
         { code: "SERVICE_UNAVAILABLE", message: th.demo.serviceUnavailable },
