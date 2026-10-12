@@ -12,7 +12,7 @@ the demo can complete a review.
 
 - Node.js 20.9 or later and npm
 - PostgreSQL 18 (or a compatible PostgreSQL release)
-- Google OAuth credentials, Anthropic API key, and Stripe test-mode keys for
+- Google OAuth credentials, Google Gemini API key (from Google AI Studio), and Stripe test-mode keys for
   the later milestones that use those services
 - Stripe CLI for local webhook testing in the billing milestone
 
@@ -77,11 +77,11 @@ name, for example `npm run prisma:migrate:dev -- --name add_reviews`.
 
 ### 4. Configure and try the anonymous Script Coach demo
 
-Set `ANTHROPIC_API_KEY` in `.env` to a server-side Anthropic API key. The key is
-never sent to the browser. The demo uses Claude Haiku for anonymous reviews,
-validates structured output with Zod, and logs token usage and estimated cost
+Set `GEMINI_API_KEY` in `.env` to a server-side Google Gemini API key obtained from [Google AI Studio](https://aistudio.google.com/). The key is
+never sent to the browser. Optionally set `GEMINI_MODEL` (defaults to `gemini-2.5-flash`). The demo uses Gemini Flash for anonymous reviews,
+validates structured JSON output with Zod, and logs token usage and estimated cost
 in PostgreSQL. It does not return mock review content when the database or
-Anthropic configuration is unavailable.
+Gemini configuration is unavailable.
 
 The demo allows two attempts per IP and signed browser-device cookie. Hashed
 identifiers and attempt counts are stored in PostgreSQL, so the initial
@@ -96,7 +96,7 @@ response includes five explained scores, exact quoted weak spots, and a spoken
 Thai rewrite. After the second allowed review, the page gates another review
 behind the sign-in page; account sign-in will be enabled in a later milestone.
 
-Estimated Claude token prices and the model selection are centralized in
+Estimated Gemini token prices and the model selection are centralized in
 `src/lib/ai/model-config.ts`; revisit the estimate if Anthropic changes its
 published rates.
 

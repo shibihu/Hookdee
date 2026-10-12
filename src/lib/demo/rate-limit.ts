@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHmac } from "node:crypto";
+
 import { prisma } from "../prisma";
 
 const DEMO_ATTEMPT_LIMIT = 2;
@@ -29,10 +29,23 @@ export const prismaRateLimitStore: RateLimitStore = {
   },
 };
 
-function hashSubject(scope: string, subject: string, secret: string): string {
-  return createHmac("sha256", secret)
-    .update(`${scope}:${subject}`)
-    .digest("hex");
+async function hashSubject(scope: string, subject: string, secret: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    enc.encode(`${scope}:${subject}`),
+  );
+  return Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export async function consumeDemoAttempt(
@@ -42,7 +55,7 @@ export async function consumeDemoAttempt(
 ): Promise<{ allowed: boolean; remaining: number }> {
   const ipCount = await store.increment(
     "demo-ip",
-    hashSubject("demo-ip", identifiers.ip, secret),
+    await hashSubject("demo-ip", identifiers.ip, secret),
     DEMO_WINDOW_START,
   );
 
@@ -52,7 +65,7 @@ export async function consumeDemoAttempt(
 
   const deviceCount = await store.increment(
     "demo-device",
-    hashSubject("demo-device", identifiers.deviceId, secret),
+    await hashSubject("demo-device", identifiers.deviceId, secret),
     DEMO_WINDOW_START,
   );
 

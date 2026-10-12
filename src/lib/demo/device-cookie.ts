@@ -1,25 +1,53 @@
 import "server-only";
 
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+
 
 export const DEMO_DEVICE_COOKIE_NAME = "hookdee_demo_device";
 
-function signature(deviceId: string, secret: string): string {
-  return createHmac("sha256", secret).update(deviceId).digest("hex");
+async function signature(deviceId: string, secret: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(deviceId));
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function constantTimeEqualHex(aHex: string, bHex: string): boolean {
+  if (aHex.length !== bHex.length) {
+    return false;
+  }
+
+  let result = 0;
+  for (let i = 0; i < aHex.length; i += 1) {
+    result |= aHex.charCodeAt(i) ^ bHex.charCodeAt(i);
+  }
+
+  return result === 0;
 }
 
 export function createDemoDeviceId(): string {
-  return randomUUID();
+  return crypto.randomUUID();
 }
 
-export function signDemoDeviceId(deviceId: string, secret: string): string {
-  return `${deviceId}.${signature(deviceId, secret)}`;
+export async function signDemoDeviceId(
+  deviceId: string,
+  secret: string,
+): Promise<string> {
+  const sig = await signature(deviceId, secret);
+  return `${deviceId}.${sig}`;
 }
 
-export function readDemoDeviceId(
+export async function readDemoDeviceId(
   signedValue: string | null,
   secret: string,
-): string | null {
+): Promise<string | null> {
   if (!signedValue) {
     return null;
   }
@@ -35,9 +63,10 @@ export function readDemoDeviceId(
     return null;
   }
 
-  const expected = Buffer.from(signature(deviceId, secret), "hex");
-  const supplied = Buffer.from(suppliedSignature, "hex");
-  return timingSafeEqual(expected, supplied) ? deviceId : null;
+  const expectedSignature = await signature(deviceId, secret);
+  return constantTimeEqualHex(expectedSignature, suppliedSignature.toLowerCase())
+    ? deviceId
+    : null;
 }
 
 export function serializeDemoDeviceCookie(

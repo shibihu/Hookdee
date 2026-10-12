@@ -1,15 +1,15 @@
 export type ModelTier = "free" | "pro";
 
-export const AI_MODELS = {
+export const AI_MODELS: Record<ModelTier, { id: string; inputUsdPerMillionTokens: number; outputUsdPerMillionTokens: number }> = {
   free: {
-    id: "claude-haiku-5-5",
-    inputUsdPerMillionTokens: 0.1,
-    outputUsdPerMillionTokens: 0.5,
+    id: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
+    inputUsdPerMillionTokens: 0.075,
+    outputUsdPerMillionTokens: 0.3,
   },
   pro: {
-    id: "claude-opus-5-5",
-    inputUsdPerMillionTokens: 4,
-    outputUsdPerMillionTokens: 20,
+    id: "gemini-2.5-pro",
+    inputUsdPerMillionTokens: 1.25,
+    outputUsdPerMillionTokens: 5.0,
   },
 } as const;
 

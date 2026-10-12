@@ -22,7 +22,7 @@ function isIpAddress(ip: string): boolean {
   return false;
 }
 import { getServerEnv } from "@/lib/env.server";
-import { createAnthropicGenerator } from "@/lib/ai/anthropic-client";
+import { createGeminiGenerator } from "@/lib/ai/gemini-client";
 import { reviewScript } from "@/lib/ai/script-coach";
 import { consumeDemoAttempt, prismaRateLimitStore } from "@/lib/demo/rate-limit";
 import {
@@ -84,7 +84,7 @@ export async function POST(request: Request): Promise<Response> {
         input,
         { userId: null, modelTier: "free" },
         {
-          generate: createAnthropicGenerator(env.ANTHROPIC_API_KEY),
+          generate: createGeminiGenerator(env.GEMINI_API_KEY),
           logRequest: async (entry) => {
             await prisma.aIRequestLog.create({ data: entry });
           },

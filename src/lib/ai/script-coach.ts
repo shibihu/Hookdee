@@ -5,7 +5,7 @@ import {
   type ScriptCoachResult,
 } from "./review-schema";
 import { AI_MODELS, estimateCostUsd, type ModelTier } from "./model-config";
-import type { GenerateStructuredReview } from "./anthropic-client";
+import type { GenerateStructuredReview } from "./gemini-client";
 
 export interface VoiceProfileContext {
   catchphrases?: string[];

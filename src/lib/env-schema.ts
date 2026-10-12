@@ -13,7 +13,8 @@ const serverEnvSchema = z.object({
   APP_URL: z.string().url(),
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
-  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  GEMINI_MODEL: z.string().min(1).optional(),
   STRIPE_SECRET_KEY: z
     .string()
     .refine((value) => value.startsWith("sk_test_"), "must be a Stripe test key")
