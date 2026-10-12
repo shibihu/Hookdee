@@ -19,9 +19,13 @@ function getTrustedClientIp(request: Request): string | null {
   }
 
   if (process.env.NODE_ENV !== "production") {
-    const hostname = new URL(request.url).hostname;
-    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
-      return "127.0.0.1";
+    try {
+      const hostname = new URL(request.url).hostname;
+      if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
+        return "127.0.0.1";
+      }
+    } catch {
+      return null;
     }
   }
 

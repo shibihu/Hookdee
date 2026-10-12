@@ -31,6 +31,14 @@ describe("parseScriptCoachResult", () => {
     );
   });
 
+  it("accepts trimmed line quotes and handles whitespace variations", () => {
+    const trimmedResult = {
+      ...validResult,
+      weakSpots: [{ quote: "  วันนี้มีของมาแนะนำ  ", reason: "เหตุผล" }],
+    };
+    expect(parseScriptCoachResult(JSON.stringify(trimmedResult), input)).toEqual(trimmedResult);
+  });
+
   it("rejects scores outside 0 to 10 and weak spots that are not exact lines", () => {
     const outOfRange = {
       ...validResult,
@@ -92,6 +100,28 @@ describe("reviewScript", () => {
       userId: null,
     });
     expect(logged[0].createdAt).toBeInstanceOf(Date);
+  });
+
+  it("logs request with null tokens and throws ScriptCoachProviderError when generate fails", async () => {
+    const logged: unknown[] = [];
+    await expect(
+      reviewScript(input, {}, {
+        generate: async () => {
+          throw new Error("Provider timeout");
+        },
+        logRequest: async (entry) => {
+          logged.push(entry);
+        },
+      }),
+    ).rejects.toMatchObject({ name: "ScriptCoachProviderError" });
+
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({
+      model: "claude-haiku-5-5",
+      inputTokens: null,
+      outputTokens: null,
+      estimatedCostUsd: null,
+    });
   });
 
   it("returns a validation error after the second invalid response", async () => {
