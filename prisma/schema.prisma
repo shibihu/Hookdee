@@ -19,6 +19,17 @@ enum BillingInterval {
   YEAR
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+}
+
 model User {
   id            String         @id @default(cuid())
   name          String?
@@ -26,7 +37,9 @@ model User {
   emailVerified DateTime?
   image         String?
   passwordHash  String?
-  accounts      Account[]
+  role              UserRole       @default(USER)
+  hasUnlimitedQuota Boolean        @default(false)
+  accounts          Account[]
   sessions      Session[]
   projects      Project[]
   monthlyUsage  MonthlyUsage[]
@@ -185,4 +198,22 @@ model VoiceProfile {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SystemLog {
+  id        String   @id @default(cuid())
+  level     LogLevel @default(INFO)
+  message   String   @db.Text
+  source    String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([level, createdAt])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
 }

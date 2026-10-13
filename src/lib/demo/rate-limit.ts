@@ -1,6 +1,5 @@
 import "server-only";
 
-
 import { prisma } from "../prisma";
 
 const DEMO_ATTEMPT_LIMIT = 2;
@@ -29,6 +28,17 @@ export const prismaRateLimitStore: RateLimitStore = {
   },
 };
 
+export async function checkGlobalUnlimitedQuota(): Promise<boolean> {
+  try {
+    const setting = await prisma.systemSetting.findUnique({
+      where: { key: "unlimited_quota" },
+    });
+    return setting?.value === "true";
+  } catch {
+    return false;
+  }
+}
+
 async function hashSubject(scope: string, subject: string, secret: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -52,7 +62,19 @@ export async function consumeDemoAttempt(
   identifiers: { ip: string; deviceId: string },
   store: RateLimitStore,
   secret: string,
+  options?: {
+    forceUnlimited?: boolean;
+    checkUnlimitedQuota?: boolean;
+    isUnlimitedQuotaActive?: () => Promise<boolean>;
+  },
 ): Promise<{ allowed: boolean; remaining: number }> {
+  const isUnlimited = options?.forceUnlimited ??
+    (options?.isUnlimitedQuotaActive ? await options.isUnlimitedQuotaActive() : (options?.checkUnlimitedQuota ? await checkGlobalUnlimitedQuota() : false));
+
+  if (isUnlimited) {
+    return { allowed: true, remaining: 999999 };
+  }
+
   const ipCount = await store.increment(
     "demo-ip",
     await hashSubject("demo-ip", identifiers.ip, secret),

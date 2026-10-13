@@ -21,6 +21,7 @@ function isIpAddress(ip: string): boolean {
 
   return false;
 }
+
 import { getServerEnv } from "@/lib/env.server";
 import { createGeminiGenerator } from "@/lib/ai/gemini-client";
 import { reviewScript } from "@/lib/ai/script-coach";
@@ -31,6 +32,7 @@ import {
 } from "@/lib/demo/handle-review";
 import { prisma } from "@/lib/prisma";
 import { th } from "@/lib/i18n/th";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -60,6 +62,7 @@ export async function POST(request: Request): Promise<Response> {
     env = getServerEnv();
   } catch (error) {
     console.error("Anonymous demo configuration unavailable", error);
+    void logger.error("Anonymous demo configuration unavailable", { error: String(error) }, "api/demo/review");
     return Response.json(
       {
         code: "SERVICE_UNAVAILABLE",
@@ -78,6 +81,7 @@ export async function POST(request: Request): Promise<Response> {
         { ip, deviceId },
         prismaRateLimitStore,
         env.AUTH_SECRET,
+        { checkUnlimitedQuota: true },
       ),
     reviewScript: (input) =>
       reviewScript(
@@ -90,7 +94,10 @@ export async function POST(request: Request): Promise<Response> {
           },
         },
       ),
-    logError: (error) => console.error("Anonymous demo review failed", error),
+    logError: (error) => {
+      console.error("Anonymous demo review failed", error);
+      void logger.error("Anonymous demo review failed", { error: String(error) }, "api/demo/review");
+    },
   };
 
   return handleDemoReview(request, dependencies);
