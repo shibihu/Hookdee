@@ -2,18 +2,18 @@
 
 Hookdee is a Thai-first workspace for reviewing and improving short-form video
 scripts. Phase 1 is being built milestone by milestone. The current foundation
-includes the Next.js app shell, typed server configuration, and the Prisma data
-model, Thai landing page, anonymous demo UI, and the server-side Claude review
-service. Authentication, saved projects, account usage enforcement, and Stripe
-checkout remain later milestones. The database migration must be applied before
-the demo can complete a review.
+includes the Next.js app shell, typed server configuration, Prisma data model,
+Thai landing page, anonymous demo UI, and server-side Gemini review service.
+Google sign-in is implemented with database-backed sessions. Saved projects,
+account usage enforcement, and Stripe checkout remain later milestones. The
+database migration must be applied before the demo can complete a review.
 
 ## Requirements
 
 - Node.js 20.9 or later and npm
 - PostgreSQL 18 (or a compatible PostgreSQL release)
-- Google OAuth credentials, Google Gemini API key (from Google AI Studio), and Stripe test-mode keys for
-  the later milestones that use those services
+- Google OAuth credentials, Google Gemini API key (from Google AI Studio), and
+  Stripe test-mode keys for the features that use those services
 - Stripe CLI for local webhook testing in the billing milestone
 
 ## Windows PowerShell setup
@@ -59,7 +59,8 @@ postgresql://hookdee:your-local-password@localhost:5432/hookdee?schema=public
 
 The values in `.env.example` are placeholders, not usable provider credentials.
 Keep `.env` local and use only Stripe test-mode keys (`sk_test_...`) during
-development. Do not put live Stripe keys in this project.
+development. Do not put live Stripe keys in this project or real credentials in
+the README.
 
 ### 3. Validate and migrate the database
 
@@ -75,7 +76,43 @@ The migration command creates and applies the initial schema. After schema
 changes in later milestones, use the same script with a descriptive migration
 name, for example `npm run prisma:migrate:dev -- --name add_reviews`.
 
-### 4. Configure and try the anonymous Script Coach demo
+### 4. Configure Google sign-in
+
+Google sign-in is implemented using Auth.js and the Google OAuth provider. In
+the [Google Cloud Console](https://console.cloud.google.com/), create or select
+a project, configure the OAuth consent screen, and create an OAuth client ID
+with application type **Web application**. Add this exact local callback URL to
+the client's **Authorized redirect URIs**:
+
+```text
+http://localhost:3000/api/auth/callback/google
+```
+
+Copy the client ID and client secret into the corresponding local `.env` values:
+
+```text
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+```
+
+Also set `AUTH_SECRET` to a random secret of at least 32 characters (the command
+in step 2 generates one), and set `APP_URL` to the app's origin, such as
+`http://localhost:3000`. These are validated server settings. The Google
+credentials must be set together: if both are absent, the login page explains
+that Google sign-in is unavailable; if only one is set, server configuration
+validation reports the missing variable. If Google rejects sign-in, verify the
+client ID/secret pair, consent-screen publishing or test-user access, and that
+the authorized redirect URI exactly matches the callback above. Provider
+configuration errors appear on the login page without exposing credentials.
+
+The Prisma adapter stores OAuth users and linked accounts in `User` and
+`Account`; sessions use the database-backed `Session` model. Use the sign-in
+link in the landing-page header and complete Google's consent flow. Once signed
+in, the header shows the account name or email and offers **Sign out**. Signing
+out clears the session and returns to `/`. Return paths are restricted to this
+app's origin; a missing or foreign return URL resolves to `/`.
+
+### 5. Configure and try the anonymous Script Coach demo
 
 Set `GEMINI_API_KEY` in `.env` to a server-side Google Gemini API key obtained from [Google AI Studio](https://aistudio.google.com/). The key is
 never sent to the browser. Optionally set `GEMINI_MODEL` (defaults to `gemini-2.5-flash`). The demo uses Gemini Flash for anonymous reviews,
@@ -94,13 +131,13 @@ Start the app and open `http://localhost:3000`. Paste a script, optionally
 choose a niche and 15/30/60-second target, then submit it for review. The
 response includes five explained scores, exact quoted weak spots, and a spoken
 Thai rewrite. After the second allowed review, the page gates another review
-behind the sign-in page; account sign-in will be enabled in a later milestone.
+behind the sign-in page.
 
 Estimated Gemini token prices and the model selection are centralized in
-`src/lib/ai/model-config.ts`; revisit the estimate if Anthropic changes its
+`src/lib/ai/model-config.ts`; revisit the estimate if Google changes its
 published rates.
 
-### 5. Run checks and start Next.js
+### 6. Run checks and start Next.js
 
 ```powershell
 npm test
@@ -112,14 +149,6 @@ npm run dev
 
 Open `http://localhost:3000`. The production server can be started with
 `npm run start` after a successful build.
-
-## Google OAuth setup
-
-Create OAuth client credentials in the Google Cloud Console for the later
-authentication milestone. Its local callback URL will be
-`http://localhost:3000/api/auth/callback/google`. Put the client ID and secret
-in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`. Google sign-in is
-not available until the authentication milestone is implemented.
 
 ## Stripe test-mode webhooks
 
