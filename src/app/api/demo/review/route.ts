@@ -81,7 +81,7 @@ export async function POST(request: Request): Promise<Response> {
         { ip, deviceId },
         prismaRateLimitStore,
         env.AUTH_SECRET,
-        { checkUnlimitedQuota: true },
+        { checkUnlimitedQuota: true, request },
       ),
     reviewScript: (input) =>
       reviewScript(

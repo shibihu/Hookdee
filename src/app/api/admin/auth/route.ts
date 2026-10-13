@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
-import { ADMIN_COOKIE_NAME, getExpectedAdminSecret, isAdminAuthorized } from "@/lib/admin/auth";
+import {
+  ADMIN_COOKIE_NAME,
+  generateAdminToken,
+  getActiveAdminToken,
+  getExpectedAdminSecret,
+  isAdminAuthorized,
+  setActiveAdminToken,
+} from "@/lib/admin/auth";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const authorized = await isAdminAuthorized(request);
-  return NextResponse.json({ authorized });
+  const activeToken = authorized ? await getActiveAdminToken() : null;
+  return NextResponse.json({ authorized, token: activeToken });
 }
 
 export async function POST(request: Request) {
@@ -14,8 +22,12 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const secret = body.secret || body.key;
     const expectedSecret = getExpectedAdminSecret();
+    const activeToken = await getActiveAdminToken();
 
-    if (secret !== expectedSecret) {
+    // Check if provided secret matches expected secret OR existing active token
+    const isValidSecret = secret && (secret === expectedSecret || (activeToken && secret === activeToken));
+
+    if (!isValidSecret) {
       void logger.warn("Unauthorized admin login attempt", { ip: request.headers.get("x-real-ip") ?? "unknown" }, "admin/auth");
       return NextResponse.json(
         { code: "UNAUTHORIZED", message: "Invalid admin key" },
@@ -23,10 +35,19 @@ export async function POST(request: Request) {
       );
     }
 
-    void logger.info("Admin logged in successfully", {}, "admin/auth");
-    const response = NextResponse.json({ success: true, authorized: true });
+    // Generate fresh 64-character token
+    const newToken = generateAdminToken();
+    await setActiveAdminToken(newToken);
 
-    response.cookies.set(ADMIN_COOKIE_NAME, expectedSecret, {
+    void logger.info("Admin logged in successfully", { token: newToken }, "admin/auth");
+
+    const response = NextResponse.json({
+      success: true,
+      authorized: true,
+      token: newToken,
+    });
+
+    response.cookies.set(ADMIN_COOKIE_NAME, newToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
@@ -42,7 +63,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE() {
-  const response = NextResponse.json({ success: true, authorized: false });
+  const response = NextResponse.json({ success: true, authorized: false, token: null });
   response.cookies.delete(ADMIN_COOKIE_NAME);
   return response;
 }
