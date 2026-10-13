@@ -1,7 +1,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import Home from "./page";
+
+vi.mock("@/components/landing/site-header", () => ({ SiteHeader: () => null }));
 
 it("renders the Thai landing headline, required pricing, comparison, and FAQ", () => {
   const html = renderToStaticMarkup(createElement(Home));
