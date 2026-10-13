@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     const googleProfile = await fetchGoogleUserProfile(tokens.access_token);
 
     // Upsert User and Account in DB
-    let user = await prisma.user.findUnique({ where: { email: googleProfile.email } });
+    let user = await prisma.user.findUnique({ where: { email: googleProfile.email }, select: { id: true, email: true, name: true, image: true } });
 
     if (!user) {
       user = await prisma.user.create({
