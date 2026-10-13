@@ -1,0 +1,66 @@
+<h2>Choose an admin panel layout</h2>
+<p class="subtitle">Both options assume an admin-only, read/write panel with confirmation and audit logging for changes.</p>
+
+<div class="cards">
+  <div class="card" data-choice="operations-console" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">Hookdee Admin · Operations Console</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Overview　 Database　 Logs　 Quotas</div>
+          <div style="display:flex; gap:10px; margin:12px 0">
+            <div class="placeholder" style="flex:1">Users<br>248</div>
+            <div class="placeholder" style="flex:1">AI requests<br>1,206</div>
+            <div class="placeholder" style="flex:1">Errors<br>7</div>
+          </div>
+          <div class="mock-sidebar">Tables<br>Users<br>Projects<br>Scripts<br>Reviews<br>AI logs<br>Rate limits</div>
+          <div class="mock-content">
+            <div class="label">USERS · 248 ROWS</div>
+            <div class="mock-input">Search rows…</div>
+            <div class="placeholder">ID　 Name　 Email　 Created<br>…　 Jane　 jane@…　 Today<br>…　 Arun　 arun@…　 Yesterday</div>
+            <div class="mock-button">Copy row　 Edit</div>
+          </div>
+          <div class="placeholder">Recent logs · ERROR 3　 WARN 4　 INFO 24　 DEBUG 11</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A · Operations Console</h3>
+      <p>Compact, table-first workspace. Persistent table navigation, fast search, copy/edit actions, and a visible recent-log stream. Best for frequent database and incident work.</p>
+    </div>
+  </div>
+  <div class="card" data-choice="guided-dashboard" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">Hookdee Admin · Overview</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Overview　 Data　 Activity　 Settings</div>
+          <div class="label">SYSTEM OVERVIEW</div>
+          <div style="display:flex; gap:10px; margin:12px 0">
+            <div class="placeholder" style="flex:1">Users<br>248　↗ 12%</div>
+            <div class="placeholder" style="flex:1">Reviews<br>1,206</div>
+          </div>
+          <div class="split">
+            <div class="mock-content">
+              <h3>Database</h3>
+              <div class="placeholder">Browse all tables<br>Users · Projects · Scripts<br>Reviews · Usage · Billing</div>
+              <div class="mock-button">Open database</div>
+            </div>
+            <div class="mock-content">
+              <h3>Recent activity</h3>
+              <div class="placeholder">ERROR · Review provider unavailable<br>WARN · Rate limit reached<br>INFO · User signed in</div>
+              <div class="mock-button">View logs</div>
+            </div>
+          </div>
+          <div class="placeholder">Admin quota: Unlimited　　System health: Operational</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B · Guided Dashboard</h3>
+      <p>Overview-first landing page with key metrics and separate database and activity screens. More approachable, but adds navigation and an extra step to reach tables.</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle">Click a card to select it, then tell me if you want any changes to the layout.</p>
