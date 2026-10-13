@@ -153,16 +153,27 @@ not part of the current foundation milestone.
 - `docs/superpowers/plans/` — milestone implementation plans
 
 
-## Deploying to Supabase (Production)
+## Deploying to Supabase & Vercel (Production)
 
-To apply Prisma migrations to a production Supabase PostgreSQL database:
+To apply Prisma migrations to a production Supabase PostgreSQL database safely and deploy to Vercel:
 
-1. Obtain your Supabase database connection string from your Supabase Project Settings -> Database -> Connection string (URI).
-2. Set `DATABASE_URL` to your Supabase connection string (use the Direct connection port 5432 or Transaction pooler port 6543 with `?pgbouncer=true`).
-3. Apply pending migrations safely using the deployment script:
+1. **Obtain Supabase Connection Strings**:
+   - In Supabase Dashboard, go to **Project Settings** -> **Database** -> **Connection string**.
+   - Use the **Direct Connection** (port 5432 or session mode port 5432) for running migrations, or Transaction Pooler (port 6543) with `?pgbouncer=true` if applicable.
 
-```bash
-npm run prisma:migrate:deploy
-```
+2. **Apply Migrations**:
+   Run the migration deploy command locally or from a CI pipeline targeting the production database:
+   ```bash
+   DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres" npm run prisma:migrate:deploy
+   ```
+   *Note: Do NOT run `prisma migrate dev` against production databases.*
 
-4. In Vercel or CI/CD pipelines, configure `DATABASE_URL` in environment variables. The `postinstall` script (`prisma generate`) runs automatically during build.
+3. **Configure Environment Variables in Vercel**:
+   In Vercel Project Settings -> Environment Variables, set:
+   - `DATABASE_URL` (Supabase transaction pooler or direct URL)
+   - `AUTH_SECRET`
+   - `GEMINI_API_KEY`
+   - `APP_URL`
+
+4. **Deploy / Redeploy Vercel**:
+   Trigger a redeploy in Vercel. The `postinstall` script (`prisma generate`) automatically generates the Prisma Client during build.

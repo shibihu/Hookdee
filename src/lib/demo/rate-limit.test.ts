@@ -21,6 +21,40 @@ function createMemoryStore() {
   return { store, subjects };
 }
 
+
+describe("prismaRateLimitStore", () => {
+  it("upserts the rate limit bucket correctly", async () => {
+    const upsertMock = vi.fn().mockResolvedValue({ count: 1 });
+    const { prismaRateLimitStore } = await import("./rate-limit");
+    const { prisma } = await import("../prisma");
+    (prisma as unknown as { rateLimitBucket: { upsert: typeof upsertMock } }).rateLimitBucket = {
+      upsert: upsertMock,
+    };
+
+    const windowStart = new Date("2025-01-01T00:00:00.000Z");
+    const count = await prismaRateLimitStore.increment("demo-ip", "hash123", windowStart);
+
+    expect(count).toBe(1);
+    expect(upsertMock).toHaveBeenCalledWith({
+      where: {
+        scope_subjectHash_windowStart: {
+          scope: "demo-ip",
+          subjectHash: "hash123",
+          windowStart,
+        },
+      },
+      create: {
+        scope: "demo-ip",
+        subjectHash: "hash123",
+        windowStart,
+        count: 1,
+      },
+      update: { count: { increment: 1 } },
+      select: { count: true },
+    });
+  });
+});
+
 describe("consumeDemoAttempt", () => {
   it("allows two attempts and denies the third for the same IP and device", async () => {
     const { store } = createMemoryStore();
