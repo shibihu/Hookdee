@@ -113,6 +113,25 @@ npm run dev
 Open `http://localhost:3000`. The production server can be started with
 `npm run start` after a successful build.
 
+
+## Admin Panel & Unlimited Quota
+
+Access the Admin Panel at `http://localhost:3000/admin` (or click **Admin Panel** in the site header/footer).
+
+### How to Get / Set the Admin Secret Key:
+
+1. **Setting your custom key:**
+   Set `ADMIN_SECRET` in your `.env` file (for example: `ADMIN_SECRET=my-secret-admin-key-123`).
+
+2. **Default fallback key:**
+   If `ADMIN_SECRET` is not explicitly defined in `.env`, the admin panel uses the value of `AUTH_SECRET` as the secret key.
+
+3. **Admin Features Available:**
+   - **Global Unlimited Quota Master Switch:** Toggle unlimited script reviews across all demo requests and users.
+   - **Quota & Rate Limit Management:** View active rate limit buckets and reset IP/device limits.
+   - **Console & System Logs:** Inspect real-time logs filtered by `ERROR`, `WARN`, and `INFO` with JSON metadata inspection.
+   - **AI Script Tester Sandbox:** Test script reviews directly without consuming quota.
+
 ## Google OAuth setup
 
 Create OAuth client credentials in the Google Cloud Console for the later
