@@ -50,7 +50,7 @@ export type ScriptNiche = z.infer<typeof ScriptNicheSchema>;
 
 export class InvalidScriptCoachOutputError extends Error {
   constructor() {
-    super("Claude returned output that does not satisfy the Script Coach schema.");
+    super("AI returned output that does not satisfy the Script Coach schema.");
     this.name = "InvalidScriptCoachOutputError";
   }
 }
@@ -75,7 +75,16 @@ export function parseScriptCoachResult(
   if (
     !parsed.data.weakSpots.every(({ quote }) => {
       const trimmedQuote = quote.trim();
-      return trimmedQuote.length > 0 && sourceLines.includes(trimmedQuote);
+      return (
+        trimmedQuote.length > 0 &&
+        (sourceLines.includes(trimmedQuote) ||
+          sourceLines.includes(quote) ||
+          sourceLines.some(
+            (line) =>
+              line.length > 0 &&
+              (trimmedQuote.startsWith(line) || line.startsWith(trimmedQuote)),
+          ))
+      );
     })
   ) {
     throw new InvalidScriptCoachOutputError();
