@@ -2,6 +2,7 @@
 .env.*
 !.env.example
 node_modules/
+.worktrees/
 .next/
 out/
 coverage/
