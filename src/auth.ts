@@ -22,4 +22,7 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
   session: {
     strategy: "database",
   },
+  pages: {
+    error: "/login",
+  },
 });

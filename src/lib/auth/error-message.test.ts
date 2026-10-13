@@ -7,6 +7,7 @@ describe("errorMessageForAuth", () => {
     ["Configuration", th.login.authErrors.configuration],
     ["OAuthSignin", th.login.authErrors.oauthSignin],
     ["OAuthCallbackError", th.login.authErrors.oauthCallback],
+    ["CallbackRouteError", th.login.authErrors.oauthCallback],
     ["OAuthAccountNotLinked", th.login.authErrors.accountNotLinked],
     ["AccessDenied", th.login.authErrors.accessDenied],
   ])("returns friendly recovery guidance for %s", (error, expected) => {
@@ -24,6 +25,13 @@ describe("errorMessageForAuth", () => {
       th.login.authErrors.unknown,
     );
   });
+
+  it.each(["constructor", "toString", "__proto__"])(
+    "does not treat inherited object keys as allowlisted error codes: %s",
+    (error) => {
+      expect(errorMessageForAuth(error)).toBe(th.login.authErrors.unknown);
+    },
+  );
 
   it("returns no message when there is no error", () => {
     expect(errorMessageForAuth(undefined)).toBeNull();

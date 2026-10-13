@@ -75,10 +75,14 @@ describe("LoginPage", () => {
     const knownErrorHtml = await renderLoginPage({
       error: "OAuthCallbackError",
     });
+    const callbackRouteErrorHtml = await renderLoginPage({
+      error: "CallbackRouteError",
+    });
     const unknownValue = "raw-provider-error-token";
     const unknownErrorHtml = await renderLoginPage({ error: unknownValue });
 
     expect(knownErrorHtml).toContain(th.login.authErrors.oauthCallback);
+    expect(callbackRouteErrorHtml).toContain(th.login.authErrors.oauthCallback);
     expect(unknownErrorHtml).toContain(th.login.authErrors.unknown);
     expect(unknownErrorHtml).not.toContain(unknownValue);
   });
