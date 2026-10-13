@@ -61,9 +61,11 @@ interface QuotaData {
 
 export default function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [activeAdminToken, setActiveAdminToken] = useState<string | null>(null);
   const [adminKeyInput, setAdminKeyInput] = useState("");
   const [authError, setAuthError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
+  const [copiedToken, setCopiedToken] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"overview" | "quota" | "logs" | "sandbox">("overview");
 
@@ -97,7 +99,10 @@ export default function AdminPage() {
       try {
         const res = await fetch("/api/admin/auth");
         const data = await res.json();
-        if (isMounted) setAuthorized(Boolean(data.authorized));
+        if (isMounted) {
+          setAuthorized(Boolean(data.authorized));
+          if (data.token) setActiveAdminToken(data.token);
+        }
       } catch {
         if (isMounted) setAuthorized(false);
       }
@@ -121,6 +126,7 @@ export default function AdminPage() {
       const data = await res.json();
       if (res.ok && data.authorized) {
         setAuthorized(true);
+        if (data.token) setActiveAdminToken(data.token);
       } else {
         setAuthError(data.message || "Invalid Admin Secret Key");
       }
@@ -134,6 +140,14 @@ export default function AdminPage() {
   const handleLogout = async () => {
     await fetch("/api/admin/auth", { method: "DELETE" });
     setAuthorized(false);
+    setActiveAdminToken(null);
+  };
+
+  const copyTokenToClipboard = () => {
+    if (!activeAdminToken) return;
+    navigator.clipboard.writeText(activeAdminToken);
+    setCopiedToken(true);
+    setTimeout(() => setCopiedToken(false), 2000);
   };
 
   const fetchStats = async () => {
@@ -344,9 +358,9 @@ export default function AdminPage() {
 
   if (authorized === null) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-100 font-sans text-stone-800">
-        <div className="rounded-2xl bg-white p-8 shadow-sm text-center">
-          <p className="text-sm font-semibold text-emerald-800 animate-pulse">Checking Admin Authorization...</p>
+      <div className="flex min-h-screen items-center justify-center bg-stone-900 font-sans text-stone-200">
+        <div className="rounded-2xl border border-stone-800 bg-stone-950 p-8 text-center shadow-lg">
+          <p className="text-sm font-semibold text-emerald-400 animate-pulse">Checking Admin Authorization...</p>
         </div>
       </div>
     );
@@ -361,7 +375,7 @@ export default function AdminPage() {
               Hookdee Control Panel
             </span>
             <h1 className="mt-4 text-2xl font-bold text-stone-100">Admin Authentication</h1>
-            <p className="mt-2 text-sm text-stone-400">Enter your Admin Secret Key to access unlimited quota settings and system logs.</p>
+            <p className="mt-2 text-sm text-stone-400">Enter your Admin Secret Key to generate your secure active token and access the panel.</p>
           </div>
 
           <form onSubmit={handleLogin} className="mt-6 space-y-4">
@@ -388,9 +402,9 @@ export default function AdminPage() {
             <button
               type="submit"
               disabled={loggingIn}
-              className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+              className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white transition hover:bg-emerald-500 disabled:opacity-50 shadow-md"
             >
-              {loggingIn ? "Authenticating..." : "Sign In to Admin Panel"}
+              {loggingIn ? "Authenticating..." : "Sign In & Generate Session Token"}
             </button>
           </form>
 
@@ -415,6 +429,18 @@ export default function AdminPage() {
             </Link>
           </div>
           <div className="flex items-center gap-4">
+            {activeAdminToken && (
+              <div className="hidden sm:flex items-center gap-2 rounded-xl border border-emerald-800/60 bg-emerald-950/30 px-3 py-1.5 text-xs text-emerald-300 font-mono">
+                <span>Active Token:</span>
+                <span className="font-bold text-emerald-400">{activeAdminToken.substring(0, 12)}...{activeAdminToken.substring(activeAdminToken.length - 8)}</span>
+                <button
+                  onClick={copyTokenToClipboard}
+                  className="ml-1 rounded bg-emerald-900/60 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-800"
+                >
+                  {copiedToken ? "Copied!" : "Copy"}
+                </button>
+              </div>
+            )}
             <button
               onClick={handleLogout}
               className="rounded-lg border border-stone-800 bg-stone-900 px-3 py-1.5 text-xs font-semibold text-stone-300 transition hover:bg-stone-800 hover:text-white"
@@ -474,6 +500,23 @@ export default function AdminPage() {
         {/* TAB 1: OVERVIEW */}
         {activeTab === "overview" && (
           <div className="space-y-8">
+            {activeAdminToken && (
+              <div className="rounded-2xl border border-emerald-800/80 bg-emerald-950/20 p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Active Admin 64-Character Token ID</p>
+                  <p className="mt-1 font-mono text-sm text-stone-200 break-all bg-stone-950 p-2.5 rounded-xl border border-stone-800 select-all">
+                    {activeAdminToken}
+                  </p>
+                </div>
+                <button
+                  onClick={copyTokenToClipboard}
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 shrink-0"
+                >
+                  {copiedToken ? "✓ Token Copied!" : "📋 Copy Full Token ID"}
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-stone-100">System Metrics & Overview</h2>
               <button
