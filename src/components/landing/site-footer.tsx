@@ -12,7 +12,12 @@ export function SiteFooter() {
           <p className="mt-1 text-sm text-stone-400">{th.footer.tagline}</p>
         </div>
         <div className="text-sm text-stone-400 md:text-right">
-          <p>{th.footer.note}</p>
+          <p>
+            <Link className="text-emerald-400 hover:underline font-semibold" href="/admin">
+              Admin Control Panel (ผู้ดูแลระบบ)
+            </Link>
+          </p>
+          <p className="mt-1">{th.footer.note}</p>
           <p className="mt-2">{th.footer.copyright}</p>
         </div>
       </div>
