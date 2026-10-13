@@ -31,6 +31,40 @@ it("accepts valid required values", () => {
   });
 });
 
+it("accepts Google credentials when both are present or both are absent", () => {
+  const withGoogleCredentials = parseServerEnv({
+    ...validEnv,
+    GOOGLE_CLIENT_ID: "google-client-id",
+    GOOGLE_CLIENT_SECRET: "google-client-secret",
+  });
+  const withoutGoogleCredentials = parseServerEnv(validEnv);
+
+  expect(withGoogleCredentials).toMatchObject({
+    GOOGLE_CLIENT_ID: "google-client-id",
+    GOOGLE_CLIENT_SECRET: "google-client-secret",
+  });
+  expect(withoutGoogleCredentials).not.toHaveProperty("GOOGLE_CLIENT_ID");
+  expect(withoutGoogleCredentials).not.toHaveProperty("GOOGLE_CLIENT_SECRET");
+});
+
+it("rejects incomplete Google credentials without printing the secret value", () => {
+  const secret = "google-secret-that-must-not-be-printed";
+  let secretErrorMessage = "";
+
+  expect(() =>
+    parseServerEnv({ ...validEnv, GOOGLE_CLIENT_ID: "google-client-id" }),
+  ).toThrow(/GOOGLE_CLIENT_SECRET/);
+
+  try {
+    parseServerEnv({ ...validEnv, GOOGLE_CLIENT_SECRET: secret });
+  } catch (error) {
+    secretErrorMessage = error instanceof Error ? error.message : String(error);
+  }
+
+  expect(secretErrorMessage).toContain("GOOGLE_CLIENT_ID");
+  expect(secretErrorMessage).not.toContain(secret);
+});
+
 it("rejects Stripe live secret keys but accepts test keys", () => {
   expect(() =>
     parseServerEnv({ ...validEnv, STRIPE_SECRET_KEY: "sk_live_example" }),

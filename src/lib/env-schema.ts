@@ -25,10 +25,25 @@ const serverEnvSchema = z.object({
     .optional(),
 });
 
-export type ServerEnv = z.infer<typeof serverEnvSchema>;
+const validatedServerEnvSchema = serverEnvSchema.superRefine((env, context) => {
+  if (Boolean(env.GOOGLE_CLIENT_ID) === Boolean(env.GOOGLE_CLIENT_SECRET)) {
+    return;
+  }
+
+  const missingVariable = env.GOOGLE_CLIENT_ID
+    ? "GOOGLE_CLIENT_SECRET"
+    : "GOOGLE_CLIENT_ID";
+  context.addIssue({
+    code: "custom",
+    path: [missingVariable],
+    message: "must be configured together with the other Google credential",
+  });
+});
+
+export type ServerEnv = z.infer<typeof validatedServerEnvSchema>;
 
 export function parseServerEnv(source: NodeJS.ProcessEnv): ServerEnv {
-  const parsed = serverEnvSchema.safeParse(source);
+  const parsed = validatedServerEnvSchema.safeParse(source);
   if (!parsed.success) {
     const details = parsed.error.issues
       .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
