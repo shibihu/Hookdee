@@ -7,7 +7,8 @@ import {
   type DemoReviewDependencies,
 } from "./handle-review";
 import { ScriptCoachProviderError } from "../ai/script-coach";
-import type { ScriptCoachInput, ScriptCoachResult } from "../ai/review-schema";
+import { DemoReviewSuccessSchema, type ScriptCoachInput, type ScriptCoachResult } from "../ai/review-schema";
+import { GeminiConfigurationError } from "../ai/gemini-client";
 
 const input: ScriptCoachInput = {
   scriptText: "เดี๋ยวก่อน!\nวันนี้มีของมาแนะนำ",
@@ -154,5 +155,51 @@ describe("handleDemoReview", () => {
       "database unavailable",
     );
     expect(errors).toHaveLength(1);
+  });
+
+  it("returns successful review with remaining = 999999 when unlimited quota is enabled and passes DemoReviewSuccessSchema", async () => {
+    const response = await handleDemoReview(
+      request(JSON.stringify(input)),
+      dependencies({
+        consumeAttempt: async () => ({ allowed: true, remaining: 999999 }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    const parsed = DemoReviewSuccessSchema.safeParse(data);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.remaining).toBe(999999);
+    }
+  });
+
+  it("handles GeminiConfigurationError with status 503 and logs the error", async () => {
+    const errors: unknown[] = [];
+    const response = await handleDemoReview(
+      request(JSON.stringify(input)),
+      dependencies({
+        reviewScript: async () => {
+          throw new GeminiConfigurationError();
+        },
+        logError: (err) => errors.push(err),
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      code: "SERVICE_UNAVAILABLE",
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(GeminiConfigurationError);
+  });
+
+  it("validates that a malformed HTTP 200 payload fails DemoReviewSuccessSchema validation", () => {
+    const malformedBody = {
+      review: { scores: {} },
+      remaining: 1,
+    };
+    const parsed = DemoReviewSuccessSchema.safeParse(malformedBody);
+    expect(parsed.success).toBe(false);
   });
 });

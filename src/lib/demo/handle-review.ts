@@ -136,6 +136,7 @@ export async function handleDemoReview(
       error instanceof ScriptCoachProviderError ||
       error instanceof ScriptCoachValidationError
     ) {
+      dependencies.logError(error);
       return respond(
         { code: "REVIEW_UNAVAILABLE", message: th.demo.reviewUnavailable },
         502,
