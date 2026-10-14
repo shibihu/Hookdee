@@ -199,3 +199,87 @@ To apply Prisma migrations to a production Supabase PostgreSQL database safely a
 
 4. **Deploy / Redeploy Vercel**:
    Trigger a redeploy in Vercel. The `postinstall` script (`prisma generate`) automatically generates the Prisma Client during build.
+
+The Vercel build remains the standard Next.js build:
+
+```powershell
+npm run build
+npx vercel --prod
+```
+
+Use the Vercel dashboard or `npx vercel login` / `npx vercel link` to configure
+the project first. Keep Vercel environment variables in Vercel; do not reuse
+Cloudflare dashboard configuration as a deployment source.
+
+## Deploying to Cloudflare Workers
+
+Cloudflare uses the official OpenNext adapter; the standard `npm run build`
+continues to run `next build` for Vercel. The adapter currently supports this
+project's pinned Next.js 16.3.8 release. Use Node.js 22 or later for Cloudflare
+builds (Wrangler 4 requires it); the Vercel build retains the existing Node.js
+20.9+ requirement.
+
+### Clean Cloudflare build and local preview (PowerShell)
+
+From the repository root:
+
+```powershell
+Remove-Item -Recurse -Force .next, .open-next -ErrorAction SilentlyContinue
+npm ci
+npm run build:cloudflare
+```
+
+The clean removes stale Next.js and OpenNext output; `npm ci` runs Prisma
+generation without connecting to the database. To preview the Worker locally,
+copy `.dev.vars.example` to `.dev.vars` and replace its placeholders with local
+or test credentials:
+
+```powershell
+Copy-Item .dev.vars.example .dev.vars
+npm run preview:cloudflare
+```
+
+The preview script builds with OpenNext before starting Wrangler. Wrangler
+serves the Worker locally (normally at `http://localhost:8787`). Test the
+landing page, `/favicon.ico`, `/login`, and API routes against this local Worker.
+The preview uses the Workers runtime, not `next start`. To build without
+starting the preview server, run `npm run build:cloudflare`.
+
+### Cloudflare deployment
+
+Authenticate Wrangler to the intended Cloudflare account once:
+
+```powershell
+npx wrangler login
+npm run deploy:cloudflare
+```
+
+The deployment command builds with OpenNext and deploys the Worker named
+`hookdee` from `wrangler.jsonc`. For a build-only check, use
+`npm run build:cloudflare`; for a local preview of that build, use
+`npm run preview:cloudflare`.
+
+In the Cloudflare dashboard, configure these under the `hookdee` Worker’s
+Settings → Variables and Secrets. Add sensitive values as **Secrets** and
+configure these independently from the Vercel project:
+
+- Required: `DATABASE_URL` (a Supabase PostgreSQL connection URL reachable from
+  Workers), `AUTH_SECRET` (at least 32 characters), and `APP_URL` (the public
+  Worker URL).
+- Admin access: `ADMIN_SECRET` (optional; falls back to `AUTH_SECRET`) and
+  `ADMIN_2FA_ENCRYPTION_KEY` when using admin authenticator 2FA.
+- Feature-specific, when enabled: `GEMINI_API_KEY`, `GEMINI_MODEL`,
+  `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `STRIPE_SECRET_KEY`, and
+  `STRIPE_WEBHOOK_SECRET`.
+
+`DATABASE_URL` and all API/authentication keys are secrets; `APP_URL` is a
+non-secret variable. The PostgreSQL client uses Prisma’s PostgreSQL driver
+adapter, which uses Cloudflare Workers TCP sockets. If the Supabase project
+restricts network access, ensure its connection policy permits the Worker, or
+use a supported Supabase connection path such as its pooler. Do not place
+production secrets in `.dev.vars.example` or commit `.dev.vars`.
+
+The Cloudflare build does not run database migrations. Apply schema changes
+through the existing controlled Prisma migration process, separately from
+Worker deployment. Vercel continues to use its normal Next.js build and its
+own independently configured environment variables.
