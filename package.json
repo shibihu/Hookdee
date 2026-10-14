@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:cloudflare": "opennextjs-cloudflare build",
+    "preview:cloudflare": "npm run build:cloudflare && opennextjs-cloudflare preview",
+    "deploy:cloudflare": "npm run build:cloudflare && opennextjs-cloudflare deploy",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -22,9 +25,11 @@
   "dependencies": {
     "@fontsource/ibm-plex-sans-thai": "^5.3.0",
     "@google/genai": "^2.28.0",
+    "@prisma/adapter-pg": "6.19.3",
     "@prisma/client": "6.19.3",
-    "next": "^16.4.0",
+    "next": "16.3.8",
     "otpauth": "^9.5.2",
+    "pg": "8.16.3",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -32,18 +37,20 @@
     "zod": "^4.6.6"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "1.20.11",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.6.5",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.4.0",
+    "eslint-config-next": "16.3.8",
     "postcss": "^8.5.29",
     "prisma": "6.19.3",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "wrangler": "4.150.0"
   },
   "allowScripts": {
     "@prisma/client@6.19.3": true,

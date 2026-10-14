@@ -1,9 +1,12 @@
 .env
 .env.*
 !.env.example
+.dev.vars
 node_modules/
 .worktrees/
 .next/
+.open-next/
+.wrangler/
 out/
 coverage/
 src/generated/prisma/

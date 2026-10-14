@@ -7,6 +7,7 @@ const eslintConfig = [
   ...nextTs,
   globalIgnores([
     ".next/**",
+    ".open-next/**",
     "out/**",
     "build/**",
     "coverage/**",

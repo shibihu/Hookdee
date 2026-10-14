@@ -1,0 +1,4 @@
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public
+AUTH_SECRET=replace-with-at-least-32-random-characters
+APP_URL=http://localhost:8787
+ADMIN_SECRET=replace-with-a-local-admin-secret
