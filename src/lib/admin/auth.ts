@@ -1,10 +1,12 @@
 import "server-only";
 
-import { getServerEnv } from "../env.server";
 import crypto from "crypto";
+import { logger } from "../logger";
+import { prisma } from "../prisma";
 
 export const ADMIN_COOKIE_NAME = "hookdee_admin_session";
 export const PENDING_2FA_COOKIE_NAME = "hookdee_admin_pending_2fa";
+const ADMIN_SESSION_TTL_MS = 30 * 60 * 1000;
 
 function parseCookieHeader(cookieHeader: string | null): Record<string, string> {
   if (!cookieHeader) return {};
@@ -17,29 +19,52 @@ function parseCookieHeader(cookieHeader: string | null): Record<string, string> 
 }
 
 export function getExpectedAdminSecret(): string {
-  try {
-    const env = getServerEnv();
-    return env.ADMIN_SECRET ?? env.AUTH_SECRET;
-  } catch {
-    return process.env.ADMIN_SECRET ?? process.env.AUTH_SECRET ?? "default-admin-secret-dev";
+  const secret = process.env.ADMIN_SECRET?.trim() || process.env.AUTH_SECRET?.trim();
+  if (!secret) {
+    throw new Error("Admin authentication secret is not configured");
   }
+  return secret;
 }
 
-export function generateAdminTokenForSecret(secret: string): string {
-  return crypto.createHmac("sha256", secret).update("hookdee-admin-auth-session-v1").digest("hex");
+export function verifyAdminSecret(provided: string): boolean {
+  if (!provided) return false;
+
+  const expectedHash = crypto.createHash("sha256").update(getExpectedAdminSecret()).digest();
+  const providedHash = crypto.createHash("sha256").update(provided).digest();
+  return crypto.timingSafeEqual(providedHash, expectedHash);
 }
 
-export function generateAdminToken(): string {
-  return generateAdminTokenForSecret(getExpectedAdminSecret());
+function hashAdminSessionToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
 }
 
-export async function getActiveAdminToken(): Promise<string | null> {
-  const secret = getExpectedAdminSecret();
-  return secret ? generateAdminTokenForSecret(secret) : null;
+export async function createAdminSession(): Promise<string> {
+  const token = crypto.randomBytes(32).toString("hex");
+  try {
+    await prisma.adminSession.create({
+      data: {
+        tokenHash: hashAdminSessionToken(token),
+        expiresAt: new Date(Date.now() + ADMIN_SESSION_TTL_MS),
+      },
+    });
+  } catch (error) {
+    void logger.error("Failed to create admin session", { operation: "create" }, "admin/auth");
+    throw error;
+  }
+  return token;
 }
 
-export async function setActiveAdminToken(): Promise<void> {
-  // Retained for interface compatibility
+export async function revokeAdminSession(token: string | null | undefined): Promise<void> {
+  if (!token) return;
+
+  try {
+    await prisma.adminSession.deleteMany({
+      where: { tokenHash: hashAdminSessionToken(token) },
+    });
+  } catch (error) {
+    void logger.error("Failed to revoke admin session", { operation: "revoke" }, "admin/auth");
+    throw error;
+  }
 }
 
 export function createPendingChallengeToken(secret: string): string {
@@ -65,30 +90,19 @@ export function verifyPendingChallengeToken(token: string | null | undefined, se
 }
 
 export async function isAdminAuthorized(request: Request): Promise<boolean> {
-  const secret = getExpectedAdminSecret();
-  if (!secret) return false;
-
-  const validToken = generateAdminTokenForSecret(secret);
-
-  const headerKey = request.headers.get("x-admin-key")?.trim();
-  const authHeader = request.headers.get("authorization")?.trim();
-  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.substring(7).trim() : null;
-
   const cookieHeader = request.headers.get("cookie");
   const cookies = parseCookieHeader(cookieHeader);
   const cookieToken = cookies[ADMIN_COOKIE_NAME]?.trim();
 
-  const providedTokens = [headerKey, bearerToken, cookieToken].filter(Boolean);
+  if (!cookieToken) return false;
 
-  if (providedTokens.length === 0) {
-    return false;
+  try {
+    const session = await prisma.adminSession.findUnique({
+      where: { tokenHash: hashAdminSessionToken(cookieToken) },
+    });
+    return Boolean(session && session.expiresAt.getTime() > Date.now());
+  } catch (error) {
+    void logger.error("Failed to look up admin session", { operation: "lookup" }, "admin/auth");
+    throw error;
   }
-
-  for (const provided of providedTokens) {
-    if (provided === secret || provided === validToken) {
-      return true;
-    }
-  }
-
-  return false;
 }

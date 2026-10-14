@@ -123,10 +123,13 @@ Access the Admin Panel at `http://localhost:3000/admin` (or click **Admin Panel*
 1. **Setting your custom key:**
    Set `ADMIN_SECRET` in your `.env` file (for example: `ADMIN_SECRET=my-secret-admin-key-123`).
 
-2. **Default fallback key:**
-   If `ADMIN_SECRET` is not explicitly defined in `.env`, the admin panel uses the value of `AUTH_SECRET` as the secret key.
+2. **Fallback and required configuration:**
+   If `ADMIN_SECRET` is not explicitly defined in `.env`, the admin panel uses `AUTH_SECRET`. If neither secret is configured, admin login fails closed.
 
-3. **Admin Features Available:**
+3. **Admin sign-in and sessions:**
+   Enter the admin secret each time `/admin` is opened or refreshed. If authenticator 2FA is enrolled, complete its code/recovery-code step after entering the secret. A signed-in tab expires after 30 minutes; opening `/admin` again revokes the earlier browser session.
+
+4. **Admin Features Available:**
    - **Global Unlimited Quota Master Switch:** Toggle unlimited script reviews across all demo requests and users.
    - **Quota & Rate Limit Management:** View active rate limit buckets and reset IP/device limits.
    - **Console & System Logs:** Inspect real-time logs filtered by `ERROR`, `WARN`, and `INFO` with JSON metadata inspection.

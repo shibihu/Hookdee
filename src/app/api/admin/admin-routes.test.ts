@@ -1,13 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/env.server", () => ({
-  getServerEnv: () => ({
-    AUTH_SECRET: "test-auth-secret-12345678901234567890",
-    ADMIN_SECRET: "test-admin-secret-key",
-    GEMINI_API_KEY: "test-gemini-key",
-  }),
-}));
 
 let mock2FASetting: {
   id: string;
@@ -17,9 +10,34 @@ let mock2FASetting: {
   isEnrolled: boolean;
   recoveryCodeHashes: string[];
 } | null = null;
+let mockAdminSessions: Array<{
+  id: string;
+  tokenHash: string;
+  expiresAt: Date;
+  createdAt: Date;
+}> = [];
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    adminSession: {
+      create: vi.fn().mockImplementation(({ data }) => {
+        const session = {
+          id: `session-${mockAdminSessions.length + 1}`,
+          createdAt: new Date(),
+          ...data,
+        };
+        mockAdminSessions.push(session);
+        return Promise.resolve(session);
+      }),
+      findUnique: vi.fn().mockImplementation(({ where }) => Promise.resolve(
+        mockAdminSessions.find((session) => session.tokenHash === where.tokenHash) ?? null,
+      )),
+      deleteMany: vi.fn().mockImplementation(({ where }) => {
+        const initialCount = mockAdminSessions.length;
+        mockAdminSessions = mockAdminSessions.filter((session) => session.tokenHash !== where.tokenHash);
+        return Promise.resolve({ count: initialCount - mockAdminSessions.length });
+      }),
+    },
     systemLog: {
       findMany: vi.fn().mockResolvedValue([]),
       count: vi.fn().mockResolvedValue(0),
@@ -61,15 +79,52 @@ vi.mock("@/lib/prisma", () => ({
     $queryRaw: vi.fn().mockResolvedValue([{ 1: 1 }]),
   },
 }));
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 import { POST as postAuth } from "./auth/route";
+import { GET as getAuth, DELETE as deleteAuth } from "./auth/route";
 import { POST as verify2FA } from "./auth/verify-2fa/route";
 import { GET as setup2FA } from "./auth/2fa/setup/route";
 import { GET as getLogs } from "./logs/route";
 import { GET as getQuota, POST as postQuota } from "./quota/route";
 import { GET as getStats } from "./stats/route";
 import { encryptSecret, generateTotpSecret } from "@/lib/admin/totp";
+import { ADMIN_COOKIE_NAME } from "@/lib/admin/auth";
+import { logger } from "@/lib/logger";
 import * as OTPAuth from "otpauth";
+
+const adminSecret = "test-admin-secret-key";
+
+beforeEach(() => {
+  vi.stubEnv("AUTH_SECRET", "test-auth-secret-12345678901234567890");
+  vi.stubEnv("ADMIN_SECRET", adminSecret);
+  mock2FASetting = null;
+  mockAdminSessions = [];
+  vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+async function loginCookie(): Promise<string> {
+  const response = await postAuth(new Request("http://localhost/api/admin/auth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: adminSecret }),
+  }));
+  const cookie = response.headers.get("set-cookie")?.split(";")[0];
+  if (response.status !== 200 || !cookie) {
+    throw new Error("Could not create an admin test session");
+  }
+  return cookie;
+}
 
 describe("Admin API routes and 2FA authentication flow", () => {
   it("authenticates valid admin key via POST /api/admin/auth when 2FA not enrolled", async () => {
@@ -86,6 +141,64 @@ describe("Admin API routes and 2FA authentication flow", () => {
     expect(data.success).toBe(true);
     expect(data.authorized).toBe(true);
     expect(data.pending2FA).toBe(false);
+    expect(data).not.toHaveProperty("token");
+    const cookie = res.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const sessionToken = cookie.slice(cookie.indexOf("=") + 1);
+    expect(cookie).toContain(`${ADMIN_COOKIE_NAME}=`);
+    expect(res.headers.get("set-cookie")).toContain("Max-Age=1800");
+    expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain(sessionToken);
+  });
+
+  it("reports authorization state without returning the session token", async () => {
+    const cookie = await loginCookie();
+    const req = new Request("http://localhost/api/admin/auth", {
+      headers: { cookie },
+    });
+
+    const res = await getAuth(req);
+    const data = await res.json();
+    expect(data.authorized).toBe(true);
+    expect(data).not.toHaveProperty("token");
+  });
+
+  it("fails closed when neither admin secret is configured", async () => {
+    vi.stubEnv("ADMIN_SECRET", "");
+    vi.stubEnv("AUTH_SECRET", "");
+    const req = new Request("http://localhost/api/admin/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "attempted-key" }),
+    });
+
+    const res = await postAuth(req);
+    expect(res.status).toBe(500);
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(JSON.stringify(vi.mocked(logger.error).mock.calls)).not.toContain("attempted-key");
+  });
+
+  it("rejects raw admin secrets on protected API routes", async () => {
+    const req = new Request("http://localhost/api/admin/stats", {
+      headers: { "x-admin-key": adminSecret },
+    });
+
+    expect((await getStats(req)).status).toBe(401);
+  });
+
+  it("revokes the server-side session on logout", async () => {
+    const cookie = await loginCookie();
+    const token = cookie.slice(cookie.indexOf("=") + 1);
+
+    const res = await deleteAuth(new Request("http://localhost/api/admin/auth", {
+      headers: { cookie },
+    }));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toContain(`${ADMIN_COOKIE_NAME}=;`);
+    expect(res.headers.get("set-cookie")).toContain("Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+    expect(mockAdminSessions).toHaveLength(0);
+    const data = await res.json();
+    expect(data).not.toHaveProperty("token");
+    expect(JSON.stringify(data)).not.toContain(token);
   });
 
   it("returns unauthorized for invalid admin key in POST /api/admin/auth", async () => {
@@ -183,7 +296,11 @@ describe("Admin API routes and 2FA authentication flow", () => {
     expect(step2Res.status).toBe(200);
     const data = await step2Res.json();
     expect(data.authorized).toBe(true);
+    expect(data).not.toHaveProperty("token");
     expect(step2Res.headers.get("set-cookie")).toContain("hookdee_admin_session=");
+    const sessionToken = step2Res.headers.get("set-cookie")?.match(/hookdee_admin_session=([^;,]+)/)?.[1];
+    expect(sessionToken).toBeDefined();
+    expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain(sessionToken);
   });
 
   it("denies access to setup 2FA when unauthenticated", async () => {
@@ -193,8 +310,9 @@ describe("Admin API routes and 2FA authentication flow", () => {
   });
 
   it("fetches system logs when authorized", async () => {
+    const cookie = await loginCookie();
     const req = new Request("http://localhost/api/admin/logs?level=ALL", {
-      headers: { "x-admin-key": "test-admin-secret-key" },
+      headers: { cookie },
     });
 
     const res = await getLogs(req);
@@ -205,8 +323,9 @@ describe("Admin API routes and 2FA authentication flow", () => {
   });
 
   it("fetches quota settings when authorized", async () => {
+    const cookie = await loginCookie();
     const req = new Request("http://localhost/api/admin/quota", {
-      headers: { "x-admin-key": "test-admin-secret-key" },
+      headers: { cookie },
     });
 
     const res = await getQuota(req);
@@ -217,10 +336,11 @@ describe("Admin API routes and 2FA authentication flow", () => {
   });
 
   it("toggles global unlimited quota via POST /api/admin/quota", async () => {
+    const cookie = await loginCookie();
     const req = new Request("http://localhost/api/admin/quota", {
       method: "POST",
       headers: {
-        "x-admin-key": "test-admin-secret-key",
+        cookie,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ action: "toggle_global_unlimited", enabled: true }),
@@ -233,8 +353,9 @@ describe("Admin API routes and 2FA authentication flow", () => {
   });
 
   it("fetches aggregate stats via GET /api/admin/stats", async () => {
+    const cookie = await loginCookie();
     const req = new Request("http://localhost/api/admin/stats", {
-      headers: { "x-admin-key": "test-admin-secret-key" },
+      headers: { cookie },
     });
 
     const res = await getStats(req);

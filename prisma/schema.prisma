@@ -227,3 +227,12 @@ model Admin2FASetting {
   recoveryCodeHashes String[] @default([])
   updatedAt          DateTime @updatedAt
 }
+
+model AdminSession {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
