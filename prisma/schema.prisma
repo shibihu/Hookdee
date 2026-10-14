@@ -217,3 +217,13 @@ model SystemSetting {
   value     String   @db.Text
   updatedAt DateTime @updatedAt
 }
+
+model Admin2FASetting {
+  id                 String   @id @default("default")
+  encryptedSecret    String   @db.Text
+  iv                 String   @db.Text
+  authTag            String   @db.Text
+  isEnrolled         Boolean  @default(false)
+  recoveryCodeHashes String[] @default([])
+  updatedAt          DateTime @updatedAt
+}

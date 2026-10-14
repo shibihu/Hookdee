@@ -59,13 +59,24 @@ interface QuotaData {
   }>;
 }
 
+interface Setup2FAResponse {
+  qrCodeUrl: string;
+  secretBase32: string;
+  recoveryCodes: string[];
+}
+
 export default function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [is2FAEnrolled, setIs2FAEnrolled] = useState<boolean>(false);
+  const [pending2FA, setPending2FA] = useState<boolean>(false);
+
+  // Login form state
   const [adminKeyInput, setAdminKeyInput] = useState("");
+  const [totpCodeInput, setTotpCodeInput] = useState("");
   const [authError, setAuthError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<"overview" | "quota" | "logs" | "sandbox">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "quota" | "logs" | "sandbox" | "security">("overview");
 
   // Stats state
   const [stats, setStats] = useState<StatsData | null>(null);
@@ -73,14 +84,14 @@ export default function AdminPage() {
 
   // Quota state
   const [quota, setQuota] = useState<QuotaData | null>(null);
-  const [loadingQuota, setLoadingQuota] = useState(false);
+  const [, setLoadingQuota] = useState(false);
   const [togglingGlobal, setTogglingGlobal] = useState(false);
 
   // Logs state
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [logFilter, setLogFilter] = useState<"ALL" | "INFO" | "WARN" | "ERROR">("ALL");
   const [logSearch, setLogSearch] = useState("");
-  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [, setLoadingLogs] = useState(false);
   const [selectedLogMeta, setSelectedLogMeta] = useState<LogItem | null>(null);
 
   // Sandbox state
@@ -91,6 +102,14 @@ export default function AdminPage() {
   const [sandboxResult, setSandboxResult] = useState<{ durationMs?: number; review?: Record<string, unknown> } | null>(null);
   const [sandboxError, setSandboxError] = useState("");
 
+  // 2FA Security setup state
+  const [setup2FAData, setSetup2FAData] = useState<Setup2FAResponse | null>(null);
+  const [confirmTotpCode, setConfirmTotpCode] = useState("");
+  const [disableTotpCode, setDisableTotpCode] = useState("");
+  const [securityMsg, setSecurityMsg] = useState("");
+  const [securityErr, setSecurityErr] = useState("");
+  const [loading2FASetup, setLoading2FASetup] = useState(false);
+
   useEffect(() => {
     let isMounted = true;
     async function checkAuth() {
@@ -99,6 +118,7 @@ export default function AdminPage() {
         const data = await res.json();
         if (isMounted) {
           setAuthorized(Boolean(data.authorized));
+          setIs2FAEnrolled(Boolean(data.is2FAEnrolled));
         }
       } catch {
         if (isMounted) setAuthorized(false);
@@ -110,7 +130,7 @@ export default function AdminPage() {
     };
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleStep1Login = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
     setLoggingIn(true);
@@ -121,11 +141,16 @@ export default function AdminPage() {
         body: JSON.stringify({ key: adminKeyInput }),
       });
       const data = await res.json();
-      if (res.ok && data.authorized) {
-        setAuthorized(true);
-        setAdminKeyInput("");
+      if (res.ok) {
+        if (data.pending2FA) {
+          setPending2FA(true);
+          setAuthError("");
+        } else if (data.authorized) {
+          setAuthorized(true);
+          setAdminKeyInput("");
+        }
       } else {
-        setAuthError(data.message || "Invalid Token ID or Admin Secret Key");
+        setAuthError(data.message || "Invalid Admin Secret Key");
       }
     } catch {
       setAuthError("Failed to connect to authentication endpoint");
@@ -134,9 +159,36 @@ export default function AdminPage() {
     }
   };
 
+  const handleStep2Verify2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setLoggingIn(true);
+    try {
+      const res = await fetch("/api/admin/auth/verify-2fa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ totpCode: totpCodeInput }),
+      });
+      const data = await res.json();
+      if (res.ok && data.authorized) {
+        setAuthorized(true);
+        setPending2FA(false);
+        setTotpCodeInput("");
+        setAdminKeyInput("");
+      } else {
+        setAuthError(data.message || "Invalid 6-digit TOTP code or recovery code");
+      }
+    } catch {
+      setAuthError("Failed to verify 2FA code");
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
   const handleLogout = async () => {
     await fetch("/api/admin/auth", { method: "DELETE" });
     setAuthorized(false);
+    setPending2FA(false);
   };
 
   const fetchStats = async () => {
@@ -173,8 +225,8 @@ export default function AdminPage() {
     setLoadingLogs(true);
     try {
       const params = new URLSearchParams();
-      if (logFilter !== "ALL") params.set("level", logFilter);
-      if (logSearch) params.set("search", logSearch);
+      if (logFilter !== "ALL") params.append("level", logFilter);
+      if (logSearch) params.append("search", logSearch);
       const res = await fetch(`/api/admin/logs?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
@@ -189,127 +241,64 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!authorized) return;
-    let isMounted = true;
-
-    async function loadTabData() {
-      if (activeTab === "overview") {
-        setLoadingStats(true);
-        try {
-          const res = await fetch("/api/admin/stats");
-          if (res.ok && isMounted) {
-            const data = await res.json();
-            setStats(data);
-          }
-        } catch (e) {
-          console.error(e);
-        } finally {
-          if (isMounted) setLoadingStats(false);
-        }
-      } else if (activeTab === "quota") {
-        setLoadingQuota(true);
-        try {
-          const res = await fetch("/api/admin/quota");
-          if (res.ok && isMounted) {
-            const data = await res.json();
-            setQuota(data);
-          }
-        } catch (e) {
-          console.error(e);
-        } finally {
-          if (isMounted) setLoadingQuota(false);
-        }
-      } else if (activeTab === "logs") {
-        setLoadingLogs(true);
-        try {
-          const params = new URLSearchParams();
-          if (logFilter !== "ALL") params.set("level", logFilter);
-          if (logSearch) params.set("search", logSearch);
-          const res = await fetch(`/api/admin/logs?${params.toString()}`);
-          if (res.ok && isMounted) {
-            const data = await res.json();
-            setLogs(data.logs || []);
-          }
-        } catch (e) {
-          console.error(e);
-        } finally {
-          if (isMounted) setLoadingLogs(false);
-        }
-      }
+    let active = true;
+    if (activeTab === "overview") {
+      fetch("/api/admin/stats").then((res) => res.ok ? res.json() : null).then((data) => {
+        if (active && data) setStats(data);
+      }).catch(() => {});
+    } else if (activeTab === "quota") {
+      fetch("/api/admin/quota").then((res) => res.ok ? res.json() : null).then((data) => {
+        if (active && data) setQuota(data);
+      }).catch(() => {});
+    } else if (activeTab === "logs") {
+      const params = new URLSearchParams();
+      if (logFilter !== "ALL") params.append("level", logFilter);
+      if (logSearch) params.append("search", logSearch);
+      fetch(`/api/admin/logs?${params.toString()}`).then((res) => res.ok ? res.json() : null).then((data) => {
+        if (active && data) setLogs(data.logs || []);
+      }).catch(() => {});
     }
-
-    void loadTabData();
     return () => {
-      isMounted = false;
+      active = false;
     };
   }, [authorized, activeTab, logFilter, logSearch]);
 
-  const toggleGlobalUnlimited = async (current: boolean) => {
+  const handleToggleGlobalQuota = async (enabled: boolean) => {
     setTogglingGlobal(true);
     try {
       const res = await fetch("/api/admin/quota", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "toggle_global_unlimited", enabled: !current }),
+        body: JSON.stringify({ action: "toggle_global_unlimited", enabled }),
       });
       if (res.ok) {
-        void fetchQuota();
+        await fetchQuota();
       }
     } finally {
       setTogglingGlobal(false);
     }
   };
 
-  const toggleUserUnlimited = async (userId: string, current: boolean) => {
-    try {
-      const res = await fetch("/api/admin/quota", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "set_user_unlimited", userId, enabled: !current }),
-      });
-      if (res.ok) {
-        void fetchQuota();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
-  const resetRateLimits = async () => {
-    if (!confirm("Are you sure you want to reset all rate limit buckets?")) return;
+
+  const handleResetRateLimits = async () => {
+    if (!confirm("Are you sure you want to reset ALL active IP and device rate limit buckets?")) return;
     try {
       const res = await fetch("/api/admin/quota", { method: "DELETE" });
       if (res.ok) {
-        void fetchQuota();
+        await fetchQuota();
       }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleCreateSampleLog = async (level: "INFO" | "WARN" | "ERROR") => {
-    try {
-      await fetch("/api/admin/logs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          level,
-          message: `Test ${level} log entry generated by Admin Panel`,
-          source: "admin_tester",
-          meta: { timestamp: new Date().toISOString(), sample: true },
-        }),
-      });
-      void fetchLogs();
     } catch (e) {
       console.error(e);
     }
   };
 
   const handleClearLogs = async () => {
-    if (!confirm("Are you sure you want to clear all system logs?")) return;
+    if (!confirm("Are you sure you want to clear all stored system logs?")) return;
     try {
       const res = await fetch("/api/admin/logs", { method: "DELETE" });
       if (res.ok) {
-        void fetchLogs();
+        await fetchLogs();
       }
     } catch (e) {
       console.error(e);
@@ -318,10 +307,9 @@ export default function AdminPage() {
 
   const handleRunSandbox = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSandboxLoading(true);
     setSandboxError("");
+    setSandboxLoading(true);
     setSandboxResult(null);
-
     try {
       const res = await fetch("/api/admin/test-review", {
         method: "POST",
@@ -333,73 +321,195 @@ export default function AdminPage() {
         }),
       });
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok) {
         setSandboxResult(data);
       } else {
-        setSandboxError(data.message || "Review test failed");
+        setSandboxError(data.message || "Failed to execute AI review test");
       }
-    } catch (err) {
-      setSandboxError(String(err));
+    } catch {
+      setSandboxError("Error connecting to test route");
     } finally {
       setSandboxLoading(false);
     }
   };
 
+  const handleStart2FASetup = async () => {
+    setLoading2FASetup(true);
+    setSecurityMsg("");
+    setSecurityErr("");
+    try {
+      const res = await fetch("/api/admin/auth/2fa/setup");
+      const data = await res.json();
+      if (res.ok) {
+        setSetup2FAData(data);
+      } else {
+        setSecurityErr(data.message || "Failed to initiate 2FA setup");
+      }
+    } catch {
+      setSecurityErr("Error connecting to 2FA setup endpoint");
+    } finally {
+      setLoading2FASetup(false);
+    }
+  };
+
+  const handleConfirm2FASetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSecurityMsg("");
+    setSecurityErr("");
+    try {
+      const res = await fetch("/api/admin/auth/2fa/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ totpCode: confirmTotpCode }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setIs2FAEnrolled(true);
+        setSetup2FAData(null);
+        setConfirmTotpCode("");
+        setSecurityMsg("🎉 Google Authenticator 2FA enrolled and enabled successfully!");
+      } else {
+        setSecurityErr(data.message || "Invalid TOTP code");
+      }
+    } catch {
+      setSecurityErr("Error confirming 2FA setup");
+    }
+  };
+
+  const handleDisable2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!confirm("Are you sure you want to disable 2FA?")) return;
+    setSecurityMsg("");
+    setSecurityErr("");
+    try {
+      const res = await fetch("/api/admin/auth/2fa/disable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ totpCode: disableTotpCode }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setIs2FAEnrolled(false);
+        setDisableTotpCode("");
+        setSecurityMsg("2FA disabled successfully.");
+      } else {
+        setSecurityErr(data.message || "Failed to disable 2FA");
+      }
+    } catch {
+      setSecurityErr("Error disabling 2FA");
+    }
+  };
+
   if (authorized === null) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-900 font-sans text-stone-200">
-        <div className="rounded-2xl border border-stone-800 bg-stone-950 p-8 text-center shadow-lg">
-          <p className="text-sm font-semibold text-emerald-400 animate-pulse">Checking Admin Authorization...</p>
+      <div className="flex min-h-screen items-center justify-center bg-stone-950 text-stone-200">
+        <div className="text-sm font-bold animate-pulse text-emerald-400">
+          Loading Hookdee Admin System...
         </div>
       </div>
     );
   }
 
+  // LOGIN SCREEN
   if (!authorized) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-900 px-4 py-12 font-sans">
-        <div className="w-full max-w-md rounded-3xl border border-stone-800 bg-stone-950 p-8 shadow-2xl">
+      <div className="flex min-h-screen items-center justify-center bg-stone-950 px-4 font-sans text-stone-200">
+        <div className="w-full max-w-md rounded-3xl border border-stone-800 bg-stone-900 p-8 shadow-2xl">
           <div className="text-center">
-            <span className="inline-block rounded-full bg-emerald-950/80 px-4 py-1 text-xs font-bold text-emerald-400 border border-emerald-800/40">
-              Hookdee Control Panel
+            <span className="inline-flex size-12 items-center justify-center rounded-2xl bg-emerald-700 text-xl font-extrabold text-white shadow-lg">
+              h
             </span>
-            <h1 className="mt-4 text-2xl font-bold text-stone-100">Admin Authentication Required</h1>
-            <p className="mt-2 text-sm text-stone-400">Please enter your Token ID or Admin Secret Key to access the panel.</p>
+            <h1 className="mt-4 text-2xl font-extrabold text-white">Hookdee Admin Portal</h1>
+            <p className="mt-1 text-xs text-stone-400">
+              {pending2FA
+                ? "Step 2: Enter Google Authenticator 6-digit TOTP code"
+                : "Step 1: Enter your Admin Secret Key to proceed"}
+            </p>
           </div>
 
-          <form onSubmit={handleLogin} className="mt-6 space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-stone-300 uppercase tracking-wider mb-2">
-                Token ID / Admin Secret Key
-              </label>
-              <input
-                type="password"
-                required
-                value={adminKeyInput}
-                onChange={(e) => setAdminKeyInput(e.target.value)}
-                placeholder="Enter Token ID or Secret Key"
-                className="w-full rounded-xl border border-stone-800 bg-stone-900 px-4 py-3 text-stone-100 placeholder-stone-600 focus:border-emerald-500 focus:outline-none text-sm"
-              />
-            </div>
-
-            {authError && (
-              <div className="rounded-xl border border-red-900/50 bg-red-950/40 p-3 text-xs text-red-300">
-                {authError}
+          {!pending2FA ? (
+            /* STEP 1: ADMIN SECRET KEY FORM */
+            <form onSubmit={handleStep1Login} className="mt-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-stone-300 uppercase tracking-wider mb-2">
+                  Admin Secret Key
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter ADMIN_SECRET or AUTH_SECRET"
+                  value={adminKeyInput}
+                  onChange={(e) => setAdminKeyInput(e.target.value)}
+                  className="w-full rounded-2xl border border-stone-800 bg-stone-950 px-4 py-3 text-sm text-stone-100 placeholder-stone-600 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20"
+                />
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={loggingIn}
-              className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white transition hover:bg-emerald-500 disabled:opacity-50 shadow-md"
-            >
-              {loggingIn ? "Authenticating..." : "Authenticate Admin Access"}
-            </button>
-          </form>
+              {authError && (
+                <p className="rounded-xl bg-red-950/80 border border-red-800 px-4 py-2.5 text-xs font-semibold text-red-300">
+                  {authError}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loggingIn || !adminKeyInput.trim()}
+                className="w-full rounded-full bg-emerald-700 py-3.5 text-sm font-bold text-white transition hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {loggingIn ? "Authenticating Step 1..." : "Continue to Admin Portal ➔"}
+              </button>
+            </form>
+          ) : (
+            /* STEP 2: TOTP / RECOVERY CODE FORM */
+            <form onSubmit={handleStep2Verify2FA} className="mt-6 space-y-4">
+              <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/40 p-3 text-xs text-emerald-300 text-center">
+                ✓ Step 1 Secret Verified. Please complete 2FA authentication.
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-300 uppercase tracking-wider mb-2">
+                  6-Digit Authenticator Code
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={16}
+                  placeholder="000000 or Recovery Code"
+                  value={totpCodeInput}
+                  onChange={(e) => setTotpCodeInput(e.target.value)}
+                  className="w-full rounded-2xl border border-stone-800 bg-stone-950 px-4 py-3 text-center text-lg font-mono tracking-widest text-emerald-400 placeholder-stone-600 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20"
+                />
+              </div>
+
+              {authError && (
+                <p className="rounded-xl bg-red-950/80 border border-red-800 px-4 py-2.5 text-xs font-semibold text-red-300">
+                  {authError}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loggingIn || !totpCodeInput.trim()}
+                className="w-full rounded-full bg-emerald-700 py-3.5 text-sm font-bold text-white transition hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {loggingIn ? "Verifying 2FA Code..." : "Verify 2FA & Access Dashboard 🔐"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPending2FA(false);
+                  setAuthError("");
+                }}
+                className="w-full text-center text-xs text-stone-400 hover:text-stone-200 mt-2"
+              >
+                ← Back to Step 1 (Re-enter Secret)
+              </button>
+            </form>
+          )}
 
           <div className="mt-6 text-center">
-            <Link href="/" className="text-xs text-stone-500 hover:text-stone-300">
-              &larr; Back to Hookdee Home
+            <Link href="/" className="text-xs font-semibold text-stone-500 hover:text-stone-300">
+              ← Return to Hookdee Homepage
             </Link>
           </div>
         </div>
@@ -407,451 +517,313 @@ export default function AdminPage() {
     );
   }
 
+  // AUTHORIZED ADMIN DASHBOARD
   return (
-    <div className="min-h-screen bg-stone-900 text-stone-100 font-sans">
-      {/* Top Header */}
-      <header className="border-b border-stone-800 bg-stone-950 px-6 py-4">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
+    <div className="min-h-screen bg-stone-950 font-sans text-stone-200">
+      {/* Header */}
+      <header className="border-b border-stone-800 bg-stone-900/90 backdrop-blur sticky top-0 z-40">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-xl font-bold tracking-tight text-emerald-400">
-              Hookdee <span className="text-xs font-semibold uppercase tracking-widest text-stone-400 border border-stone-800 rounded px-2 py-0.5 bg-stone-900 ml-2">Admin</span>
-            </Link>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="rounded-xl border border-emerald-800/60 bg-emerald-950/30 px-3 py-1.5 text-xs text-emerald-300 font-mono">
-              ● Admin Session Active
+            <span className="flex size-8 items-center justify-center rounded-xl bg-emerald-700 font-extrabold text-white text-sm">
+              h
             </span>
+            <h1 className="text-lg font-extrabold text-white tracking-tight">
+              Hookdee Control Panel
+            </h1>
+            <span className="rounded-full bg-emerald-950 border border-emerald-800 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
+              ADMIN ACTIVE
+            </span>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <Link href="/" className="text-xs font-semibold text-stone-400 hover:text-white transition">
+              Main Site ↗
+            </Link>
             <button
               onClick={handleLogout}
-              className="rounded-lg border border-stone-800 bg-stone-900 px-3 py-1.5 text-xs font-semibold text-stone-300 transition hover:bg-stone-800 hover:text-white"
+              className="rounded-xl border border-stone-800 bg-stone-900 px-3.5 py-1.5 text-xs font-bold text-red-400 hover:bg-red-950/40 hover:border-red-800 transition"
             >
               Sign Out
             </button>
           </div>
         </div>
-      </header>
 
-      {/* Main Container */}
-      <main className="mx-auto max-w-7xl px-6 py-8">
-        {/* Navigation Tabs */}
-        <div className="flex flex-wrap gap-2 border-b border-stone-800 pb-4 mb-8">
+        {/* Sub-nav Tabs */}
+        <div className="mx-auto max-w-7xl px-6 flex gap-2 border-t border-stone-800/60 pt-2 pb-2">
           <button
             onClick={() => setActiveTab("overview")}
-            className={`rounded-xl px-5 py-2.5 text-sm font-bold transition ${
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
               activeTab === "overview"
-                ? "bg-emerald-600 text-white shadow-md"
-                : "bg-stone-950 text-stone-400 hover:bg-stone-800 hover:text-stone-200"
+                ? "bg-emerald-800 text-white shadow"
+                : "text-stone-400 hover:text-stone-200 hover:bg-stone-900"
             }`}
           >
-            📊 Overview & Health
+            📊 System Overview
           </button>
           <button
             onClick={() => setActiveTab("quota")}
-            className={`rounded-xl px-5 py-2.5 text-sm font-bold transition ${
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
               activeTab === "quota"
-                ? "bg-emerald-600 text-white shadow-md"
-                : "bg-stone-950 text-stone-400 hover:bg-stone-800 hover:text-stone-200"
+                ? "bg-emerald-800 text-white shadow"
+                : "text-stone-400 hover:text-stone-200 hover:bg-stone-900"
             }`}
           >
-            ⚡ Quota & Rate Limits
+            ⚡ Quota & Master Switch
           </button>
           <button
             onClick={() => setActiveTab("logs")}
-            className={`rounded-xl px-5 py-2.5 text-sm font-bold transition ${
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
               activeTab === "logs"
-                ? "bg-emerald-600 text-white shadow-md"
-                : "bg-stone-950 text-stone-400 hover:bg-stone-800 hover:text-stone-200"
+                ? "bg-emerald-800 text-white shadow"
+                : "text-stone-400 hover:text-stone-200 hover:bg-stone-900"
             }`}
           >
-            📜 Console & System Logs
+            📋 Console Logs
           </button>
           <button
             onClick={() => setActiveTab("sandbox")}
-            className={`rounded-xl px-5 py-2.5 text-sm font-bold transition ${
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
               activeTab === "sandbox"
-                ? "bg-emerald-600 text-white shadow-md"
-                : "bg-stone-950 text-stone-400 hover:bg-stone-800 hover:text-stone-200"
+                ? "bg-emerald-800 text-white shadow"
+                : "text-stone-400 hover:text-stone-200 hover:bg-stone-900"
             }`}
           >
-            🧪 AI Script Tester
+            🧪 AI Script Sandbox
+          </button>
+          <button
+            onClick={() => setActiveTab("security")}
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
+              activeTab === "security"
+                ? "bg-emerald-800 text-white shadow"
+                : "text-stone-400 hover:text-stone-200 hover:bg-stone-900"
+            }`}
+          >
+            🔐 Security & 2FA
           </button>
         </div>
+      </header>
 
+      {/* Main Content */}
+      <main className="mx-auto max-w-7xl px-6 py-8">
         {/* TAB 1: OVERVIEW */}
         {activeTab === "overview" && (
-          <div className="space-y-8">
+          <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-stone-100">System Metrics & Overview</h2>
+              <div>
+                <h2 className="text-xl font-bold text-stone-100">System Diagnostics & Health</h2>
+                <p className="text-xs text-stone-400 mt-1">Real-time infrastructure and database connection status.</p>
+              </div>
               <button
                 onClick={fetchStats}
-                className="rounded-lg bg-stone-800 px-3 py-1.5 text-xs text-stone-300 hover:bg-stone-700"
+                className="rounded-xl border border-stone-800 bg-stone-900 px-3 py-1.5 text-xs text-stone-300 hover:bg-stone-800"
               >
-                {loadingStats ? "Refreshing..." : "🔄 Refresh Metrics"}
+                {loadingStats ? "Refreshing..." : "🔄 Refresh"}
               </button>
             </div>
 
             {stats && (
-              <>
-                {/* Health Cards */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-stone-800 bg-stone-950 p-5">
-                    <p className="text-xs font-medium text-stone-400">Database Connection</p>
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className={`h-3 w-3 rounded-full ${stats.health.databaseConnected ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
-                      <p className="text-lg font-bold text-stone-100">
-                        {stats.health.databaseConnected ? "PostgreSQL Ready" : "Disconnected"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-stone-800 bg-stone-950 p-5">
-                    <p className="text-xs font-medium text-stone-400">Gemini AI API Key</p>
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className={`h-3 w-3 rounded-full ${stats.health.geminiConfigured ? "bg-emerald-500" : "bg-amber-500"}`} />
-                      <p className="text-lg font-bold text-stone-100">
-                        {stats.health.geminiConfigured ? "Configured" : "Fallback Mode"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-stone-800 bg-stone-950 p-5">
-                    <p className="text-xs font-medium text-stone-400">Auth Secret</p>
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className={`h-3 w-3 rounded-full ${stats.health.authSecretConfigured ? "bg-emerald-500" : "bg-red-500"}`} />
-                      <p className="text-lg font-bold text-stone-100">
-                        {stats.health.authSecretConfigured ? "Configured" : "Missing Secret"}
-                      </p>
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="rounded-2xl border border-stone-800 bg-stone-900 p-5">
+                  <span className="text-xs font-bold text-stone-400 uppercase">Database Status</span>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className={`size-3 rounded-full ${stats.health.databaseConnected ? "bg-emerald-500" : "bg-red-500"}`} />
+                    <span className="font-extrabold text-lg text-white">
+                      {stats.health.databaseConnected ? "Connected (Supabase Postgres)" : "Disconnected"}
+                    </span>
                   </div>
                 </div>
 
-                {/* AI & Usage Cards */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-2xl border border-stone-800 bg-stone-950 p-5">
-                    <p className="text-xs font-medium text-stone-400">Total AI Requests</p>
-                    <p className="mt-2 text-3xl font-extrabold text-emerald-400">{stats.aiMetrics.totalRequests}</p>
-                    <p className="mt-1 text-xs text-stone-500">Logged Gemini calls</p>
-                  </div>
-
-                  <div className="rounded-2xl border border-stone-800 bg-stone-950 p-5">
-                    <p className="text-xs font-medium text-stone-400">Estimated Cost (USD)</p>
-                    <p className="mt-2 text-3xl font-extrabold text-emerald-400">${stats.aiMetrics.estimatedCostUsd.toFixed(6)}</p>
-                    <p className="mt-1 text-xs text-stone-500">Based on Gemini Flash rates</p>
-                  </div>
-
-                  <div className="rounded-2xl border border-stone-800 bg-stone-950 p-5">
-                    <p className="text-xs font-medium text-stone-400">Total Tokens Processed</p>
-                    <p className="mt-2 text-3xl font-extrabold text-emerald-400">{stats.aiMetrics.totalTokens.toLocaleString()}</p>
-                    <p className="mt-1 text-xs text-stone-500">
-                      In: {stats.aiMetrics.inputTokens.toLocaleString()} | Out: {stats.aiMetrics.outputTokens.toLocaleString()}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-stone-800 bg-stone-950 p-5">
-                    <p className="text-xs font-medium text-stone-400">System Logs Count</p>
-                    <p className="mt-2 text-3xl font-extrabold text-stone-100">{stats.logMetrics.total}</p>
-                    <p className="mt-1 text-xs text-stone-400">
-                      <span className="text-red-400 font-bold">{stats.logMetrics.error} ERROR</span> |{" "}
-                      <span className="text-amber-400 font-bold">{stats.logMetrics.warn} WARN</span> |{" "}
-                      <span className="text-blue-400 font-bold">{stats.logMetrics.info} INFO</span>
-                    </p>
+                <div className="rounded-2xl border border-stone-800 bg-stone-900 p-5">
+                  <span className="text-xs font-bold text-stone-400 uppercase">Gemini AI Provider</span>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className={`size-3 rounded-full ${stats.health.geminiConfigured ? "bg-emerald-500" : "bg-amber-500"}`} />
+                    <span className="font-extrabold text-lg text-white">
+                      {stats.health.geminiConfigured ? "Configured & Active" : "Key Missing"}
+                    </span>
                   </div>
                 </div>
 
-                {/* App Data Metrics */}
-                <div className="rounded-2xl border border-stone-800 bg-stone-950 p-6">
-                  <h3 className="text-base font-bold text-stone-200 mb-4">Application Usage Statistics</h3>
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 text-center">
-                    <div className="rounded-xl bg-stone-900 p-4 border border-stone-800">
-                      <p className="text-xs text-stone-400">Registered Users</p>
-                      <p className="text-2xl font-bold text-stone-100 mt-1">{stats.appMetrics.users}</p>
-                    </div>
-                    <div className="rounded-xl bg-stone-900 p-4 border border-stone-800">
-                      <p className="text-xs text-stone-400">Saved Scripts</p>
-                      <p className="text-2xl font-bold text-stone-100 mt-1">{stats.appMetrics.scripts}</p>
-                    </div>
-                    <div className="rounded-xl bg-stone-900 p-4 border border-stone-800">
-                      <p className="text-xs text-stone-400">Completed Reviews</p>
-                      <p className="text-2xl font-bold text-stone-100 mt-1">{stats.appMetrics.reviews}</p>
-                    </div>
-                    <div className="rounded-xl bg-stone-900 p-4 border border-stone-800">
-                      <p className="text-xs text-stone-400">Active Rate Limit Buckets</p>
-                      <p className="text-2xl font-bold text-stone-100 mt-1">{stats.appMetrics.rateLimitBuckets}</p>
-                    </div>
+                <div className="rounded-2xl border border-stone-800 bg-stone-900 p-5">
+                  <span className="text-xs font-bold text-stone-400 uppercase">Auth Secret Setup</span>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className={`size-3 rounded-full ${stats.health.authSecretConfigured ? "bg-emerald-500" : "bg-red-500"}`} />
+                    <span className="font-extrabold text-lg text-white">
+                      {stats.health.authSecretConfigured ? "Secure" : "Fallback Key Used"}
+                    </span>
                   </div>
                 </div>
-              </>
+              </div>
+            )}
+
+            {stats && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
+                <div className="rounded-2xl border border-stone-800 bg-stone-900 p-5">
+                  <p className="text-xs font-semibold text-stone-400">Total AI Requests</p>
+                  <p className="text-2xl font-extrabold text-emerald-400 mt-1">{stats.aiMetrics.totalRequests.toLocaleString()}</p>
+                </div>
+                <div className="rounded-2xl border border-stone-800 bg-stone-900 p-5">
+                  <p className="text-xs font-semibold text-stone-400">Total AI Tokens Used</p>
+                  <p className="text-2xl font-extrabold text-white mt-1">{stats.aiMetrics.totalTokens.toLocaleString()}</p>
+                </div>
+                <div className="rounded-2xl border border-stone-800 bg-stone-900 p-5">
+                  <p className="text-xs font-semibold text-stone-400">Estimated Cost (USD)</p>
+                  <p className="text-2xl font-extrabold text-white mt-1">${stats.aiMetrics.estimatedCostUsd.toFixed(6)}</p>
+                </div>
+                <div className="rounded-2xl border border-stone-800 bg-stone-900 p-5">
+                  <p className="text-xs font-semibold text-stone-400">Active Rate Limit Buckets</p>
+                  <p className="text-2xl font-extrabold text-white mt-1">{stats.appMetrics.rateLimitBuckets.toLocaleString()}</p>
+                </div>
+              </div>
             )}
           </div>
         )}
 
-        {/* TAB 2: QUOTA & RATE LIMITS */}
+        {/* TAB 2: QUOTA & MASTER SWITCH */}
         {activeTab === "quota" && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between">
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-amber-900/60 bg-amber-950/30 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-stone-100">Quota & Rate Limit Control</h2>
-                <p className="text-xs text-stone-400 mt-1">Manage global rate limits and individual user unlimited access.</p>
+                <h3 className="text-base font-extrabold text-amber-200">Global Unlimited Quota Master Switch</h3>
+                <p className="text-xs text-amber-400/80 mt-1">
+                  When enabled, all anonymous demo visitors and logged-in users bypass demo rate limits and receive unlimited script reviews.
+                </p>
               </div>
               <button
-                onClick={fetchQuota}
-                className="rounded-lg bg-stone-800 px-3 py-1.5 text-xs text-stone-300 hover:bg-stone-700"
+                disabled={togglingGlobal}
+                onClick={() => handleToggleGlobalQuota(!quota?.globalUnlimited)}
+                className={`rounded-2xl px-6 py-3 text-xs font-extrabold uppercase tracking-wide transition shrink-0 ${
+                  quota?.globalUnlimited
+                    ? "bg-emerald-600 text-white hover:bg-emerald-500"
+                    : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                }`}
               >
-                {loadingQuota ? "Loading..." : "🔄 Refresh Quota Data"}
+                {togglingGlobal
+                  ? "Updating..."
+                  : quota?.globalUnlimited
+                  ? "⚡ UNLIMITED QUOTA ACTIVE (CLICK TO DISABLE)"
+                  : "🔒 ENFORCE RATE LIMITS (CLICK TO ENABLE UNLIMITED)"}
               </button>
             </div>
 
-            {quota && (
-              <>
-                {/* Global Master Switch */}
-                <div className="rounded-3xl border border-emerald-900/60 bg-emerald-950/20 p-6 text-stone-100 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div>
-                    <span className="inline-block rounded-full bg-emerald-900/80 px-3 py-1 text-xs font-bold text-emerald-300 border border-emerald-700">
-                      Master Switch
-                    </span>
-                    <h3 className="text-xl font-bold mt-2">Global Unlimited Quota Bypass</h3>
-                    <p className="text-sm text-stone-300 mt-1 max-w-xl">
-                      When enabled, all script reviews (demo & user requests) bypass rate limits and allow infinite review generation.
-                    </p>
+            <div className="flex justify-between items-center pt-4">
+              <h3 className="text-sm font-bold text-stone-200">Active Rate Limit IP & Device Buckets</h3>
+              <button
+                onClick={handleResetRateLimits}
+                className="rounded-xl border border-red-900 bg-red-950/60 px-3.5 py-1.5 text-xs font-bold text-red-300 hover:bg-red-900"
+              >
+                Reset All Buckets
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-stone-800 bg-stone-900 overflow-hidden">
+              <div className="p-4 bg-stone-900/80 border-b border-stone-800 font-bold text-xs text-stone-400 grid grid-cols-4">
+                <span>Scope</span>
+                <span>Subject Hash</span>
+                <span>Count</span>
+                <span>Last Updated</span>
+              </div>
+              {quota?.rateLimitBuckets.length === 0 ? (
+                <div className="p-6 text-center text-xs text-stone-500">No active rate limit buckets found.</div>
+              ) : (
+                quota?.rateLimitBuckets.map((bucket) => (
+                  <div key={bucket.id} className="p-4 border-b border-stone-800/50 font-mono text-xs grid grid-cols-4 text-stone-300">
+                    <span className="text-emerald-400 font-bold">{bucket.scope}</span>
+                    <span className="truncate">{bucket.subjectHash}</span>
+                    <span>{bucket.count} attempts</span>
+                    <span className="text-stone-500">{new Date(bucket.updatedAt).toLocaleTimeString()}</span>
                   </div>
-                  <button
-                    onClick={() => toggleGlobalUnlimited(quota.globalUnlimited)}
-                    disabled={togglingGlobal}
-                    className={`rounded-2xl px-6 py-4 font-bold text-sm transition shadow-lg flex items-center gap-3 ${
-                      quota.globalUnlimited
-                        ? "bg-emerald-500 text-stone-950 hover:bg-emerald-400"
-                        : "bg-stone-800 text-stone-300 border border-stone-700 hover:bg-stone-700"
-                    }`}
-                  >
-                    <span className={`h-3 w-3 rounded-full ${quota.globalUnlimited ? "bg-stone-950 animate-ping" : "bg-stone-500"}`} />
-                    {quota.globalUnlimited ? "GLOBAL UNLIMITED ACTIVE (Click to Disable)" : "ENABLE GLOBAL UNLIMITED QUOTA"}
-                  </button>
-                </div>
-
-                {/* Rate Limit Buckets & Reset */}
-                <div className="rounded-2xl border border-stone-800 bg-stone-950 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-base font-bold text-stone-100">Rate Limit Buckets ({quota.totalBuckets})</h3>
-                      <p className="text-xs text-stone-400">Tracked IP addresses and device IDs currently rate limited.</p>
-                    </div>
-                    <button
-                      onClick={resetRateLimits}
-                      className="rounded-lg border border-red-800/80 bg-red-950/40 px-3 py-1.5 text-xs font-bold text-red-300 hover:bg-red-900"
-                    >
-                      🔥 Reset All Rate Limits
-                    </button>
-                  </div>
-
-                  {quota.rateLimitBuckets.length === 0 ? (
-                    <p className="text-xs text-stone-500 py-4 text-center">No active rate limit buckets recorded.</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs text-stone-300">
-                        <thead className="border-b border-stone-800 bg-stone-900 text-stone-400 uppercase">
-                          <tr>
-                            <th className="py-2.5 px-3">Scope</th>
-                            <th className="py-2.5 px-3">Hashed Subject</th>
-                            <th className="py-2.5 px-3">Attempts Count</th>
-                            <th className="py-2.5 px-3">Last Updated</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-stone-800/60">
-                          {quota.rateLimitBuckets.map((bucket) => (
-                            <tr key={bucket.id} className="hover:bg-stone-900/50">
-                              <td className="py-2 px-3 font-mono text-emerald-400">{bucket.scope}</td>
-                              <td className="py-2 px-3 font-mono text-stone-400">{bucket.subjectHash.slice(0, 20)}...</td>
-                              <td className="py-2 px-3 font-bold text-amber-400">{bucket.count}</td>
-                              <td className="py-2 px-3 text-stone-500">{new Date(bucket.updatedAt).toLocaleString()}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                {/* User Quota Table */}
-                <div className="rounded-2xl border border-stone-800 bg-stone-950 p-6">
-                  <h3 className="text-base font-bold text-stone-100 mb-1">User Account Quota Permissions</h3>
-                  <p className="text-xs text-stone-400 mb-4">Grant specific registered users unlimited quota privileges.</p>
-
-                  {quota.users.length === 0 ? (
-                    <p className="text-xs text-stone-500 py-4 text-center">No registered users found.</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs text-stone-300">
-                        <thead className="border-b border-stone-800 bg-stone-900 text-stone-400 uppercase">
-                          <tr>
-                            <th className="py-2.5 px-3">User</th>
-                            <th className="py-2.5 px-3">Role</th>
-                            <th className="py-2.5 px-3">Unlimited Status</th>
-                            <th className="py-2.5 px-3">Toggle Quota</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-stone-800/60">
-                          {quota.users.map((u) => (
-                            <tr key={u.id} className="hover:bg-stone-900/50">
-                              <td className="py-2.5 px-3">
-                                <p className="font-semibold text-stone-200">{u.name || "Unnamed User"}</p>
-                                <p className="text-stone-500 text-[11px]">{u.email || u.id}</p>
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <span className="rounded bg-stone-900 border border-stone-800 px-2 py-0.5 text-[10px] font-bold text-stone-300">
-                                  {u.role}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <span className={`rounded px-2 py-0.5 text-[10px] font-bold ${
-                                  u.hasUnlimitedQuota
-                                    ? "bg-emerald-950 border border-emerald-800 text-emerald-300"
-                                    : "bg-stone-900 text-stone-500"
-                                }`}>
-                                  {u.hasUnlimitedQuota ? "Unlimited Quota" : "Standard Limits"}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <button
-                                  onClick={() => toggleUserUnlimited(u.id, u.hasUnlimitedQuota)}
-                                  className="rounded bg-stone-800 px-2.5 py-1 text-[11px] font-semibold text-stone-200 hover:bg-stone-700"
-                                >
-                                  {u.hasUnlimitedQuota ? "Revoke Unlimited" : "Grant Unlimited"}
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
+                ))
+              )}
+            </div>
           </div>
         )}
 
         {/* TAB 3: CONSOLE LOGS */}
         {activeTab === "logs" && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-stone-100">Console & System Logs</h2>
-                <p className="text-xs text-stone-400 mt-1">Real-time inspection of system operations, errors, warnings, and info events.</p>
+                <h2 className="text-xl font-bold text-stone-100">System & Error Logs</h2>
+                <p className="text-xs text-stone-400 mt-1">Real-time system events, API errors, and audit logs.</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => handleCreateSampleLog("INFO")}
-                  className="rounded-lg bg-blue-950/60 border border-blue-800/60 px-2.5 py-1.5 text-xs text-blue-300 hover:bg-blue-900"
-                >
-                  + Sample INFO
-                </button>
-                <button
-                  onClick={() => handleCreateSampleLog("WARN")}
-                  className="rounded-lg bg-amber-950/60 border border-amber-800/60 px-2.5 py-1.5 text-xs text-amber-300 hover:bg-amber-900"
-                >
-                  + Sample WARN
-                </button>
-                <button
-                  onClick={() => handleCreateSampleLog("ERROR")}
-                  className="rounded-lg bg-red-950/60 border border-red-800/60 px-2.5 py-1.5 text-xs text-red-300 hover:bg-red-900"
-                >
-                  + Sample ERROR
-                </button>
-                <button
-                  onClick={handleClearLogs}
-                  className="rounded-lg bg-stone-800 px-3 py-1.5 text-xs text-red-400 hover:bg-stone-700"
-                >
-                  Clear Logs
-                </button>
-              </div>
+              <button
+                onClick={handleClearLogs}
+                className="rounded-xl border border-red-900 bg-red-950/60 px-3.5 py-1.5 text-xs font-bold text-red-300 hover:bg-red-900"
+              >
+                Clear All Logs
+              </button>
             </div>
 
-            {/* Filter Pills and Search */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 rounded-2xl border border-stone-800 bg-stone-950 p-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-stone-400 mr-2">Level:</span>
-                {(["ALL", "ERROR", "WARN", "INFO"] as const).map((level) => (
+            {/* Filter Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-stone-800 bg-stone-900 p-3">
+              <div className="flex gap-2">
+                {(["ALL", "INFO", "WARN", "ERROR"] as const).map((lvl) => (
                   <button
-                    key={level}
-                    onClick={() => setLogFilter(level)}
-                    className={`rounded-lg px-3 py-1 text-xs font-bold transition ${
-                      logFilter === level
-                        ? level === "ERROR"
-                          ? "bg-red-600 text-white"
-                          : level === "WARN"
-                          ? "bg-amber-600 text-white"
-                          : level === "INFO"
-                          ? "bg-blue-600 text-white"
-                          : "bg-emerald-600 text-white"
-                        : "bg-stone-900 text-stone-400 hover:bg-stone-800"
+                    key={lvl}
+                    onClick={() => setLogFilter(lvl)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold ${
+                      logFilter === lvl ? "bg-emerald-800 text-white" : "text-stone-400 hover:text-stone-200"
                     }`}
                   >
-                    {level}
+                    {lvl}
                   </button>
                 ))}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Search log messages..."
+                  placeholder="Search logs..."
                   value={logSearch}
                   onChange={(e) => setLogSearch(e.target.value)}
-                  className="rounded-lg border border-stone-800 bg-stone-900 px-3 py-1.5 text-xs text-stone-200 placeholder-stone-600 focus:outline-none focus:border-emerald-500"
+                  className="rounded-lg border border-stone-800 bg-stone-950 px-3 py-1.5 text-xs text-stone-200 outline-none"
                 />
                 <button
                   onClick={fetchLogs}
-                  className="rounded-lg bg-stone-800 px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700"
+                  className="rounded-lg bg-stone-800 px-3 py-1.5 text-xs font-bold text-stone-200 hover:bg-stone-700"
                 >
-                  {loadingLogs ? "Loading..." : "Search"}
+                  Search
                 </button>
               </div>
             </div>
 
-            {/* Log Table / List */}
-            <div className="rounded-2xl border border-stone-800 bg-stone-950 overflow-hidden">
+            {/* Logs List */}
+            <div className="rounded-2xl border border-stone-800 bg-stone-900 overflow-hidden divide-y divide-stone-800/60 font-mono text-xs">
               {logs.length === 0 ? (
-                <div className="p-8 text-center text-stone-500 text-xs">
-                  {loadingLogs ? "Fetching logs..." : "No system logs match the selected filter."}
-                </div>
+                <div className="p-8 text-center text-stone-500 text-xs">No logs match the current filter.</div>
               ) : (
-                <div className="divide-y divide-stone-800/60 font-mono text-xs">
-                  {logs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="p-4 hover:bg-stone-900/50 transition flex flex-col md:flex-row md:items-center justify-between gap-2"
-                    >
-                      <div className="flex items-start gap-3 flex-1">
-                        <span
-                          className={`rounded px-2 py-0.5 text-[10px] font-bold shrink-0 ${
-                            log.level === "ERROR"
-                              ? "bg-red-950 text-red-300 border border-red-800"
-                              : log.level === "WARN"
-                              ? "bg-amber-950 text-amber-300 border border-amber-800"
-                              : "bg-blue-950 text-blue-300 border border-blue-800"
-                          }`}
-                        >
-                          {log.level}
-                        </span>
-                        <div>
-                          <p className="text-stone-200 break-all">{log.message}</p>
-                          <p className="text-[11px] text-stone-500 mt-0.5 font-sans">
-                            Source: <span className="text-stone-400">{log.source || "system"}</span> | Time: {new Date(log.createdAt).toLocaleString()}
-                          </p>
-                        </div>
+                logs.map((log) => (
+                  <div key={log.id} className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
+                    <div className="flex items-start gap-3 flex-1">
+                      <span
+                        className={`rounded px-2 py-0.5 text-[10px] font-bold shrink-0 ${
+                          log.level === "ERROR"
+                            ? "bg-red-950 text-red-300 border border-red-800"
+                            : log.level === "WARN"
+                            ? "bg-amber-950 text-amber-300 border border-amber-800"
+                            : "bg-blue-950 text-blue-300 border border-blue-800"
+                        }`}
+                      >
+                        {log.level}
+                      </span>
+                      <div>
+                        <p className="text-stone-200 break-all">{log.message}</p>
+                        <p className="text-[11px] text-stone-500 mt-0.5 font-sans">
+                          Source: <span className="text-stone-400">{log.source || "system"}</span> | Time: {new Date(log.createdAt).toLocaleString()}
+                        </p>
                       </div>
-
-                      {log.meta && Object.keys(log.meta).length > 0 && (
-                        <button
-                          onClick={() => setSelectedLogMeta(log)}
-                          className="rounded bg-stone-900 border border-stone-800 px-2.5 py-1 text-[11px] text-stone-400 hover:text-stone-200 shrink-0 self-start md:self-auto font-sans"
-                        >
-                          🔍 Inspect JSON Meta
-                        </button>
-                      )}
                     </div>
-                  ))}
-                </div>
+
+                    {log.meta && Object.keys(log.meta).length > 0 && (
+                      <button
+                        onClick={() => setSelectedLogMeta(log)}
+                        className="rounded bg-stone-950 border border-stone-800 px-2.5 py-1 text-[11px] text-stone-400 hover:text-stone-200 shrink-0 font-sans"
+                      >
+                        🔍 Inspect JSON
+                      </button>
+                    )}
+                  </div>
+                ))
               )}
             </div>
 
@@ -860,27 +832,16 @@ export default function AdminPage() {
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
                 <div className="w-full max-w-2xl rounded-2xl border border-stone-800 bg-stone-950 p-6 shadow-2xl">
                   <div className="flex items-center justify-between border-b border-stone-800 pb-3">
-                    <h3 className="font-bold text-stone-200 text-sm">
-                      Inspect Log Details [{selectedLogMeta.level}]
-                    </h3>
-                    <button
-                      onClick={() => setSelectedLogMeta(null)}
-                      className="text-stone-400 hover:text-stone-100 text-sm font-bold"
-                    >
+                    <h3 className="font-bold text-stone-200 text-sm">Inspect Log Details [{selectedLogMeta.level}]</h3>
+                    <button onClick={() => setSelectedLogMeta(null)} className="text-stone-400 hover:text-stone-100 text-sm font-bold">
                       ✕ Close
                     </button>
                   </div>
                   <div className="mt-4 space-y-2 text-xs">
                     <p className="text-stone-300 font-semibold">{selectedLogMeta.message}</p>
-                    <p className="text-stone-500">
-                      ID: {selectedLogMeta.id} | Time: {new Date(selectedLogMeta.createdAt).toISOString()}
-                    </p>
-                    <div className="mt-3 rounded-xl border border-stone-800 bg-stone-900 p-4">
-                      <p className="text-[11px] font-bold text-stone-400 mb-2">JSON Metadata:</p>
-                      <pre className="overflow-x-auto text-[11px] text-emerald-400 font-mono">
-                        {JSON.stringify(selectedLogMeta.meta, null, 2)}
-                      </pre>
-                    </div>
+                    <pre className="overflow-x-auto text-[11px] text-emerald-400 font-mono bg-stone-900 p-4 rounded-xl border border-stone-800 mt-2">
+                      {JSON.stringify(selectedLogMeta.meta, null, 2)}
+                    </pre>
                   </div>
                 </div>
               </div>
@@ -893,22 +854,19 @@ export default function AdminPage() {
           <div className="space-y-6">
             <div>
               <h2 className="text-xl font-bold text-stone-100">AI Script Review Sandbox</h2>
-              <p className="text-xs text-stone-400 mt-1">Directly test Script Coach AI review generation without consuming regular rate limit quota.</p>
+              <p className="text-xs text-stone-400 mt-1">Directly test Script Coach AI review generation without consuming rate limits.</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Test Input Form */}
-              <form onSubmit={handleRunSandbox} className="rounded-2xl border border-stone-800 bg-stone-950 p-6 space-y-4">
+              <form onSubmit={handleRunSandbox} className="rounded-2xl border border-stone-800 bg-stone-900 p-6 space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-stone-300 mb-1">
-                    Script Text (ข้อความสคริปต์):
-                  </label>
+                  <label className="block text-xs font-semibold text-stone-300 mb-1">Script Text (ข้อความสคริปต์):</label>
                   <textarea
                     rows={6}
                     required
                     value={sandboxText}
                     onChange={(e) => setSandboxText(e.target.value)}
-                    className="w-full rounded-xl border border-stone-800 bg-stone-900 p-3 text-xs text-stone-100 focus:outline-none focus:border-emerald-500 font-sans"
+                    className="w-full rounded-xl border border-stone-800 bg-stone-950 p-3 text-xs text-stone-100 font-sans outline-none focus:border-emerald-600"
                   />
                 </div>
 
@@ -918,7 +876,7 @@ export default function AdminPage() {
                     <select
                       value={sandboxNiche}
                       onChange={(e) => setSandboxNiche(e.target.value as typeof sandboxNiche)}
-                      className="w-full rounded-xl border border-stone-800 bg-stone-900 p-2.5 text-xs text-stone-100 focus:outline-none focus:border-emerald-500"
+                      className="w-full rounded-xl border border-stone-800 bg-stone-950 p-2.5 text-xs text-stone-100"
                     >
                       <option value="review">Review (รีวิว)</option>
                       <option value="lifestyle">Lifestyle (ไลฟ์สไตล์)</option>
@@ -932,7 +890,7 @@ export default function AdminPage() {
                     <select
                       value={sandboxDuration}
                       onChange={(e) => setSandboxDuration(Number(e.target.value) as 15 | 30 | 60)}
-                      className="w-full rounded-xl border border-stone-800 bg-stone-900 p-2.5 text-xs text-stone-100 focus:outline-none focus:border-emerald-500"
+                      className="w-full rounded-xl border border-stone-800 bg-stone-950 p-2.5 text-xs text-stone-100"
                     >
                       <option value={15}>15 Seconds</option>
                       <option value={30}>30 Seconds</option>
@@ -950,14 +908,13 @@ export default function AdminPage() {
                 <button
                   type="submit"
                   disabled={sandboxLoading}
-                  className="w-full rounded-xl bg-emerald-600 py-3 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+                  className="w-full rounded-xl bg-emerald-700 py-3 text-xs font-bold text-white hover:bg-emerald-600 disabled:opacity-50"
                 >
                   {sandboxLoading ? "Processing AI Review..." : "🚀 Run Sandbox Test (Unlimited Quota)"}
                 </button>
               </form>
 
-              {/* Output Result */}
-              <div className="rounded-2xl border border-stone-800 bg-stone-950 p-6">
+              <div className="rounded-2xl border border-stone-800 bg-stone-900 p-6">
                 <h3 className="text-sm font-bold text-stone-200 mb-3">AI Response Result</h3>
                 {!sandboxResult && !sandboxLoading && (
                   <p className="text-xs text-stone-500 py-12 text-center">Run a test script review to inspect output scores and latency.</p>
@@ -969,23 +926,154 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {sandboxResult && typeof sandboxResult === "object" && (
+                {sandboxResult && (
                   <div className="space-y-4 text-xs">
-                    <div className="rounded-xl bg-stone-900 border border-stone-800 p-3 flex justify-between items-center text-stone-300">
+                    <div className="rounded-xl bg-stone-950 border border-stone-800 p-3 flex justify-between items-center text-stone-300">
                       <span>Latency: <strong className="text-emerald-400">{sandboxResult.durationMs ?? 0} ms</strong></span>
                       <span className="text-emerald-400 font-bold">SUCCESS 200 OK</span>
                     </div>
 
-                    <div className="rounded-xl border border-stone-800 bg-stone-900 p-4">
-                      <p className="font-bold text-stone-200 mb-2">JSON Review Output:</p>
-                      <pre className="overflow-x-auto text-[11px] text-emerald-300 font-mono max-h-96">
-                        {JSON.stringify(sandboxResult.review, null, 2)}
-                      </pre>
-                    </div>
+                    <pre className="overflow-x-auto text-[11px] text-emerald-300 font-mono bg-stone-950 p-4 rounded-xl border border-stone-800 max-h-96">
+                      {JSON.stringify(sandboxResult.review, null, 2)}
+                    </pre>
                   </div>
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* TAB 5: SECURITY & 2FA */}
+        {activeTab === "security" && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-bold text-stone-100">Google Authenticator Two-Factor Authentication (2FA)</h2>
+              <p className="text-xs text-stone-400 mt-1">
+                Protect Admin Portal logins with mandatory 6-digit TOTP verification.
+              </p>
+            </div>
+
+            {securityMsg && (
+              <div className="rounded-2xl border border-emerald-800 bg-emerald-950/60 p-4 text-xs text-emerald-200">
+                {securityMsg}
+              </div>
+            )}
+
+            {securityErr && (
+              <div className="rounded-2xl border border-red-800 bg-red-950/60 p-4 text-xs text-red-200">
+                {securityErr}
+              </div>
+            )}
+
+            {/* Current Status Card */}
+            <div className="rounded-2xl border border-stone-800 bg-stone-900 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <span className="text-xs font-bold text-stone-400 uppercase">2FA Protection Status</span>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className={`size-3.5 rounded-full ${is2FAEnrolled ? "bg-emerald-500" : "bg-amber-500"}`} />
+                  <span className="font-extrabold text-lg text-white">
+                    {is2FAEnrolled ? "Google Authenticator 2FA Enrolled & Active" : "Not Enrolled (Password Only)"}
+                  </span>
+                </div>
+              </div>
+
+              {!is2FAEnrolled && !setup2FAData && (
+                <button
+                  onClick={handleStart2FASetup}
+                  disabled={loading2FASetup}
+                  className="rounded-2xl bg-emerald-700 px-6 py-3 text-xs font-bold text-white hover:bg-emerald-600 disabled:opacity-50"
+                >
+                  {loading2FASetup ? "Generating Setup..." : "🔐 Enroll Google Authenticator 2FA"}
+                </button>
+              )}
+            </div>
+
+            {/* 2FA SETUP MODAL / CARD */}
+            {setup2FAData && !is2FAEnrolled && (
+              <div className="rounded-2xl border border-emerald-800 bg-stone-900 p-6 space-y-6">
+                <div className="border-b border-stone-800 pb-4">
+                  <h3 className="text-base font-extrabold text-emerald-400">Step 1: Scan QR Code with Google Authenticator</h3>
+                  <p className="text-xs text-stone-400 mt-1">
+                    Open Google Authenticator (or any TOTP app) on your phone, scan this QR code or enter the secret key manually.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                  <div className="flex flex-col items-center p-4 bg-white rounded-2xl border border-stone-200 w-fit mx-auto md:mx-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={setup2FAData.qrCodeUrl} alt="2FA QR Code" className="size-48" />
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-stone-400 mb-1">Manual Secret Key:</label>
+                      <code className="block p-3 rounded-xl bg-stone-950 border border-stone-800 font-mono text-emerald-400 text-xs font-bold select-all">
+                        {setup2FAData.secretBase32}
+                      </code>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-stone-400 mb-1">Single-Use Recovery Codes (Save These!):</label>
+                      <div className="grid grid-cols-2 gap-2 bg-stone-950 p-3 rounded-xl border border-stone-800 font-mono text-[11px] text-stone-300">
+                        {setup2FAData.recoveryCodes.map((code, idx) => (
+                          <div key={idx} className="select-all">{code}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleConfirm2FASetup} className="border-t border-stone-800 pt-6 space-y-4">
+                  <h4 className="text-sm font-bold text-stone-200">Step 2: Enter 6-digit TOTP code to confirm activation</h4>
+                  <div className="flex gap-4 max-w-md">
+                    <input
+                      type="text"
+                      required
+                      placeholder="000000"
+                      maxLength={6}
+                      value={confirmTotpCode}
+                      onChange={(e) => setConfirmTotpCode(e.target.value)}
+                      className="flex-1 rounded-xl border border-stone-800 bg-stone-950 px-4 py-2.5 text-center font-mono text-sm tracking-widest text-emerald-400 outline-none focus:border-emerald-600"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!confirmTotpCode.trim()}
+                      className="rounded-xl bg-emerald-700 px-6 py-2.5 text-xs font-bold text-white hover:bg-emerald-600 disabled:opacity-50"
+                    >
+                      Confirm & Enable 2FA
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* DISABLE 2FA FORM */}
+            {is2FAEnrolled && (
+              <form onSubmit={handleDisable2FA} className="rounded-2xl border border-stone-800 bg-stone-900 p-6 space-y-4">
+                <h3 className="text-sm font-bold text-stone-200">Disable 2FA Protection</h3>
+                <p className="text-xs text-stone-400">
+                  Enter your current Google Authenticator 6-digit code to turn off two-factor authentication.
+                </p>
+                <div className="flex gap-4 max-w-md">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Current TOTP Code"
+                    maxLength={6}
+                    value={disableTotpCode}
+                    onChange={(e) => setDisableTotpCode(e.target.value)}
+                    className="flex-1 rounded-xl border border-stone-800 bg-stone-950 px-4 py-2.5 text-center font-mono text-sm tracking-widest text-stone-200 outline-none focus:border-red-600"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!disableTotpCode.trim()}
+                    className="rounded-xl border border-red-900 bg-red-950/80 px-6 py-2.5 text-xs font-bold text-red-300 hover:bg-red-900 disabled:opacity-50"
+                  >
+                    Disable 2FA
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         )}
       </main>

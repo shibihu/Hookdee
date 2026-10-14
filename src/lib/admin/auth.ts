@@ -4,6 +4,7 @@ import { getServerEnv } from "../env.server";
 import crypto from "crypto";
 
 export const ADMIN_COOKIE_NAME = "hookdee_admin_session";
+export const PENDING_2FA_COOKIE_NAME = "hookdee_admin_pending_2fa";
 
 function parseCookieHeader(cookieHeader: string | null): Record<string, string> {
   if (!cookieHeader) return {};
@@ -39,6 +40,28 @@ export async function getActiveAdminToken(): Promise<string | null> {
 
 export async function setActiveAdminToken(): Promise<void> {
   // Retained for interface compatibility
+}
+
+export function createPendingChallengeToken(secret: string): string {
+  const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes validity
+  const payload = `${expiresAt}`;
+  const signature = crypto.createHmac("sha256", secret).update(`pending-2fa:${payload}`).digest("hex");
+  return `${payload}.${signature}`;
+}
+
+export function verifyPendingChallengeToken(token: string | null | undefined, secret: string): boolean {
+  if (!token) return false;
+  const parts = token.split(".");
+  if (parts.length !== 2) return false;
+
+  const [expiresAtStr, signature] = parts;
+  const expiresAt = parseInt(expiresAtStr, 10);
+  if (isNaN(expiresAt) || Date.now() > expiresAt) {
+    return false;
+  }
+
+  const expectedSignature = crypto.createHmac("sha256", secret).update(`pending-2fa:${expiresAtStr}`).digest("hex");
+  return crypto.timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expectedSignature, "hex"));
 }
 
 export async function isAdminAuthorized(request: Request): Promise<boolean> {
