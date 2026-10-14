@@ -1,11 +1,9 @@
 import "server-only";
 
 import { getServerEnv } from "../env.server";
-import { prisma } from "../prisma";
 import crypto from "crypto";
 
 export const ADMIN_COOKIE_NAME = "hookdee_admin_session";
-export const ADMIN_TOKEN_SETTING_KEY = "admin_active_token";
 
 function parseCookieHeader(cookieHeader: string | null): Record<string, string> {
   if (!cookieHeader) return {};
@@ -26,50 +24,47 @@ export function getExpectedAdminSecret(): string {
   }
 }
 
+export function generateAdminTokenForSecret(secret: string): string {
+  return crypto.createHmac("sha256", secret).update("hookdee-admin-auth-session-v1").digest("hex");
+}
+
 export function generateAdminToken(): string {
-  return crypto.randomBytes(32).toString("hex"); // 64 characters hex
+  return generateAdminTokenForSecret(getExpectedAdminSecret());
 }
 
 export async function getActiveAdminToken(): Promise<string | null> {
-  try {
-    const setting = await prisma.systemSetting.findUnique({
-      where: { key: ADMIN_TOKEN_SETTING_KEY },
-    });
-    return setting?.value ?? null;
-  } catch {
-    return null;
-  }
+  const secret = getExpectedAdminSecret();
+  return secret ? generateAdminTokenForSecret(secret) : null;
 }
 
-export async function setActiveAdminToken(token: string): Promise<void> {
-  try {
-    await prisma.systemSetting.upsert({
-      where: { key: ADMIN_TOKEN_SETTING_KEY },
-      create: { key: ADMIN_TOKEN_SETTING_KEY, value: token },
-      update: { value: token },
-    });
-  } catch (error) {
-    console.error("Failed to set active admin token", error);
-  }
+export async function setActiveAdminToken(): Promise<void> {
+  // Retained for interface compatibility
 }
 
 export async function isAdminAuthorized(request: Request): Promise<boolean> {
   const secret = getExpectedAdminSecret();
-  const activeToken = await getActiveAdminToken();
+  if (!secret) return false;
 
-  const headerKey = request.headers.get("x-admin-key");
-  const authHeader = request.headers.get("authorization");
+  const validToken = generateAdminTokenForSecret(secret);
+
+  const headerKey = request.headers.get("x-admin-key")?.trim();
+  const authHeader = request.headers.get("authorization")?.trim();
   const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.substring(7).trim() : null;
 
   const cookieHeader = request.headers.get("cookie");
   const cookies = parseCookieHeader(cookieHeader);
-  const cookieToken = cookies[ADMIN_COOKIE_NAME];
+  const cookieToken = cookies[ADMIN_COOKIE_NAME]?.trim();
 
   const providedTokens = [headerKey, bearerToken, cookieToken].filter(Boolean);
 
+  if (providedTokens.length === 0) {
+    return false;
+  }
+
   for (const provided of providedTokens) {
-    if (provided === secret) return true;
-    if (activeToken && provided === activeToken) return true;
+    if (provided === secret || provided === validToken) {
+      return true;
+    }
   }
 
   return false;

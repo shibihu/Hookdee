@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import {
   ADMIN_COOKIE_NAME,
-  generateAdminToken,
-  getActiveAdminToken,
+  generateAdminTokenForSecret,
   getExpectedAdminSecret,
   isAdminAuthorized,
-  setActiveAdminToken,
 } from "@/lib/admin/auth";
 import { logger } from "@/lib/logger";
 
@@ -13,41 +11,36 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const authorized = await isAdminAuthorized(request);
-  const activeToken = authorized ? await getActiveAdminToken() : null;
-  return NextResponse.json({ authorized, token: activeToken });
+  const secret = getExpectedAdminSecret();
+  const token = authorized ? generateAdminTokenForSecret(secret) : null;
+  return NextResponse.json({ authorized, token });
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const secret = body.secret || body.key;
+    const providedSecret = (body.secret || body.key || "").trim();
     const expectedSecret = getExpectedAdminSecret();
-    const activeToken = await getActiveAdminToken();
 
-    // Check if provided secret matches expected secret OR existing active token
-    const isValidSecret = secret && (secret === expectedSecret || (activeToken && secret === activeToken));
-
-    if (!isValidSecret) {
+    if (!providedSecret || providedSecret !== expectedSecret) {
       void logger.warn("Unauthorized admin login attempt", { ip: request.headers.get("x-real-ip") ?? "unknown" }, "admin/auth");
       return NextResponse.json(
-        { code: "UNAUTHORIZED", message: "Invalid admin key" },
+        { code: "UNAUTHORIZED", message: "Invalid admin secret key" },
         { status: 401 }
       );
     }
 
-    // Generate fresh 64-character token
-    const newToken = generateAdminToken();
-    await setActiveAdminToken(newToken);
+    const token = generateAdminTokenForSecret(expectedSecret);
 
-    void logger.info("Admin logged in successfully", { token: newToken }, "admin/auth");
+    void logger.info("Admin logged in successfully", { token }, "admin/auth");
 
     const response = NextResponse.json({
       success: true,
       authorized: true,
-      token: newToken,
+      token,
     });
 
-    response.cookies.set(ADMIN_COOKIE_NAME, newToken, {
+    response.cookies.set(ADMIN_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
