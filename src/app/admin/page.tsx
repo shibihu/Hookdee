@@ -61,11 +61,9 @@ interface QuotaData {
 
 export default function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
-  const [activeAdminToken, setActiveAdminToken] = useState<string | null>(null);
   const [adminKeyInput, setAdminKeyInput] = useState("");
   const [authError, setAuthError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
-  const [copiedToken, setCopiedToken] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"overview" | "quota" | "logs" | "sandbox">("overview");
 
@@ -101,7 +99,6 @@ export default function AdminPage() {
         const data = await res.json();
         if (isMounted) {
           setAuthorized(Boolean(data.authorized));
-          if (data.token) setActiveAdminToken(data.token);
         }
       } catch {
         if (isMounted) setAuthorized(false);
@@ -126,9 +123,9 @@ export default function AdminPage() {
       const data = await res.json();
       if (res.ok && data.authorized) {
         setAuthorized(true);
-        if (data.token) setActiveAdminToken(data.token);
+        setAdminKeyInput("");
       } else {
-        setAuthError(data.message || "Invalid Admin Secret Key");
+        setAuthError(data.message || "Invalid Token ID or Admin Secret Key");
       }
     } catch {
       setAuthError("Failed to connect to authentication endpoint");
@@ -140,14 +137,6 @@ export default function AdminPage() {
   const handleLogout = async () => {
     await fetch("/api/admin/auth", { method: "DELETE" });
     setAuthorized(false);
-    setActiveAdminToken(null);
-  };
-
-  const copyTokenToClipboard = () => {
-    if (!activeAdminToken) return;
-    navigator.clipboard.writeText(activeAdminToken);
-    setCopiedToken(true);
-    setTimeout(() => setCopiedToken(false), 2000);
   };
 
   const fetchStats = async () => {
@@ -374,21 +363,21 @@ export default function AdminPage() {
             <span className="inline-block rounded-full bg-emerald-950/80 px-4 py-1 text-xs font-bold text-emerald-400 border border-emerald-800/40">
               Hookdee Control Panel
             </span>
-            <h1 className="mt-4 text-2xl font-bold text-stone-100">Admin Authentication</h1>
-            <p className="mt-2 text-sm text-stone-400">Enter your Admin Secret Key to generate your secure active token and access the panel.</p>
+            <h1 className="mt-4 text-2xl font-bold text-stone-100">Admin Authentication Required</h1>
+            <p className="mt-2 text-sm text-stone-400">Please enter your Token ID or Admin Secret Key to access the panel.</p>
           </div>
 
           <form onSubmit={handleLogin} className="mt-6 space-y-4">
             <div>
               <label className="block text-xs font-semibold text-stone-300 uppercase tracking-wider mb-2">
-                Admin Secret Key
+                Token ID / Admin Secret Key
               </label>
               <input
                 type="password"
                 required
                 value={adminKeyInput}
                 onChange={(e) => setAdminKeyInput(e.target.value)}
-                placeholder="Enter AUTH_SECRET or ADMIN_SECRET"
+                placeholder="Enter Token ID or Secret Key"
                 className="w-full rounded-xl border border-stone-800 bg-stone-900 px-4 py-3 text-stone-100 placeholder-stone-600 focus:border-emerald-500 focus:outline-none text-sm"
               />
             </div>
@@ -404,7 +393,7 @@ export default function AdminPage() {
               disabled={loggingIn}
               className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white transition hover:bg-emerald-500 disabled:opacity-50 shadow-md"
             >
-              {loggingIn ? "Authenticating..." : "Sign In & Generate Session Token"}
+              {loggingIn ? "Authenticating..." : "Authenticate Admin Access"}
             </button>
           </form>
 
@@ -429,18 +418,9 @@ export default function AdminPage() {
             </Link>
           </div>
           <div className="flex items-center gap-4">
-            {activeAdminToken && (
-              <div className="hidden sm:flex items-center gap-2 rounded-xl border border-emerald-800/60 bg-emerald-950/30 px-3 py-1.5 text-xs text-emerald-300 font-mono">
-                <span>Active Token:</span>
-                <span className="font-bold text-emerald-400">{activeAdminToken.substring(0, 12)}...{activeAdminToken.substring(activeAdminToken.length - 8)}</span>
-                <button
-                  onClick={copyTokenToClipboard}
-                  className="ml-1 rounded bg-emerald-900/60 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-800"
-                >
-                  {copiedToken ? "Copied!" : "Copy"}
-                </button>
-              </div>
-            )}
+            <span className="rounded-xl border border-emerald-800/60 bg-emerald-950/30 px-3 py-1.5 text-xs text-emerald-300 font-mono">
+              ● Admin Session Active
+            </span>
             <button
               onClick={handleLogout}
               className="rounded-lg border border-stone-800 bg-stone-900 px-3 py-1.5 text-xs font-semibold text-stone-300 transition hover:bg-stone-800 hover:text-white"
@@ -500,23 +480,6 @@ export default function AdminPage() {
         {/* TAB 1: OVERVIEW */}
         {activeTab === "overview" && (
           <div className="space-y-8">
-            {activeAdminToken && (
-              <div className="rounded-2xl border border-emerald-800/80 bg-emerald-950/20 p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Active Admin 64-Character Token ID</p>
-                  <p className="mt-1 font-mono text-sm text-stone-200 break-all bg-stone-950 p-2.5 rounded-xl border border-stone-800 select-all">
-                    {activeAdminToken}
-                  </p>
-                </div>
-                <button
-                  onClick={copyTokenToClipboard}
-                  className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 shrink-0"
-                >
-                  {copiedToken ? "✓ Token Copied!" : "📋 Copy Full Token ID"}
-                </button>
-              </div>
-            )}
-
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-stone-100">System Metrics & Overview</h2>
               <button
@@ -546,7 +509,7 @@ export default function AdminPage() {
                     <div className="mt-2 flex items-center gap-2">
                       <span className={`h-3 w-3 rounded-full ${stats.health.geminiConfigured ? "bg-emerald-500" : "bg-amber-500"}`} />
                       <p className="text-lg font-bold text-stone-100">
-                        {stats.health.geminiConfigured ? "Configured" : "Missing Key"}
+                        {stats.health.geminiConfigured ? "Configured" : "Fallback Mode"}
                       </p>
                     </div>
                   </div>

@@ -72,6 +72,18 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  let geminiKey = env.GEMINI_API_KEY;
+  if (!geminiKey) {
+    try {
+      const dbKeySetting = await prisma.systemSetting.findUnique({
+        where: { key: "gemini_api_key" },
+      });
+      if (dbKeySetting?.value) geminiKey = dbKeySetting.value;
+    } catch {
+      // ignore
+    }
+  }
+
   const dependencies: DemoReviewDependencies = {
     secret: env.AUTH_SECRET,
     isProduction: process.env.NODE_ENV === "production",
@@ -88,9 +100,13 @@ export async function POST(request: Request): Promise<Response> {
         input,
         { userId: null, modelTier: "free" },
         {
-          generate: createGeminiGenerator(env.GEMINI_API_KEY),
+          generate: createGeminiGenerator(geminiKey),
           logRequest: async (entry) => {
-            await prisma.aIRequestLog.create({ data: entry });
+            try {
+              await prisma.aIRequestLog.create({ data: entry });
+            } catch {
+              // ignore log failure
+            }
           },
         },
       ),
