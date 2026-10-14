@@ -25,17 +25,8 @@ export function SiteHeader() {
           <a className="transition hover:text-emerald-800" href="#faq">
             {th.nav.faq}
           </a>
-          <Link className="font-semibold text-emerald-800 transition hover:text-emerald-900" href="/admin">
-            Admin Panel
-          </Link>
         </nav>
         <div className="flex items-center gap-3">
-          <Link
-            className="hidden sm:inline-flex rounded-full bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-800"
-            href="/admin"
-          >
-            Admin Panel
-          </Link>
           <Link
             className="rounded-full border border-stone-300 px-4 py-2 text-sm font-semibold text-stone-800 transition hover:border-emerald-800 hover:text-emerald-800"
             href="/login"
@@ -57,9 +48,6 @@ export function SiteHeader() {
         <a className="shrink-0" href="#faq">
           {th.nav.faq}
         </a>
-        <Link className="shrink-0 font-bold text-emerald-800" href="/admin">
-          Admin Panel
-        </Link>
       </nav>
     </header>
   );

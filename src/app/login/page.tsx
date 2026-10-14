@@ -128,19 +128,6 @@ export default function LoginPage() {
               </svg>
               <span>{redirecting ? th.login.signingIn : th.login.googleButton}</span>
             </button>
-
-            <div className="flex items-center gap-3 text-xs text-stone-400 my-4">
-              <div className="h-px flex-1 bg-stone-200" />
-              <span>หรือ</span>
-              <div className="h-px flex-1 bg-stone-200" />
-            </div>
-
-            <Link
-              href="/admin"
-              className="inline-block w-full rounded-2xl border border-stone-200 bg-stone-100 px-4 py-3 text-xs font-semibold text-stone-700 transition hover:bg-stone-200"
-            >
-              🔐 {th.login.adminAction}
-            </Link>
           </div>
         )}
 
