@@ -96,7 +96,6 @@ import { GET as getQuota, POST as postQuota } from "./quota/route";
 import { GET as getStats } from "./stats/route";
 import { encryptSecret, generateTotpSecret } from "@/lib/admin/totp";
 import { ADMIN_COOKIE_NAME } from "@/lib/admin/auth";
-import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import * as OTPAuth from "otpauth";
 

@@ -62,7 +62,8 @@ describe("admin auth helper", () => {
     expect(token).toMatch(/^[a-f0-9]{64}$/);
     expect(create.tokenHash).not.toBe(token);
     expect(create.tokenHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(create.expiresAt.getTime()).toBe(1_000_000 + 30 * 60 * 1000);
+    const expiresAt = create.expiresAt instanceof Date ? create.expiresAt : new Date(create.expiresAt);
+    expect(expiresAt.getTime()).toBe(1_000_000 + 30 * 60 * 1000);
   });
 
   it("authorizes a request with an unexpired admin session cookie", async () => {
@@ -95,10 +96,12 @@ describe("admin auth helper", () => {
     await expect(isAdminAuthorized(requestWithExpiredCookie)).resolves.toBe(false);
   });
 
-  it.each([
+  const rawAdminApiCredentials: Array<Record<string, string>> = [
     { "x-admin-key": adminSecret },
     { authorization: `Bearer ${adminSecret}` },
-  ])("does not authorize a raw API credential", async (headers) => {
+  ];
+
+  it.each(rawAdminApiCredentials)("does not authorize a raw API credential", async (headers) => {
     const request = new Request("http://localhost/api/admin/stats", { headers });
 
     await expect(isAdminAuthorized(request)).resolves.toBe(false);

@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 vi.mock("server-only", () => ({}));
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   decryptSecret,
   encryptSecret,
@@ -13,6 +13,16 @@ import {
 import * as OTPAuth from "otpauth";
 
 describe("Admin TOTP utilities", () => {
+  beforeEach(() => {
+    vi.stubEnv("AUTH_SECRET", "test-auth-secret-for-totp-encryption");
+    vi.stubEnv("ADMIN_SECRET", "");
+    vi.stubEnv("ADMIN_2FA_ENCRYPTION_KEY", "");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("encrypts and decrypts a TOTP secret at rest with AES-256-GCM", () => {
     const secret = "JBSWY3DPEHPK3PXP";
     const encrypted = encryptSecret(secret);
