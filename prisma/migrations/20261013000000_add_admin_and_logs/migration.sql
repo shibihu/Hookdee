@@ -26,7 +26,7 @@ CREATE TABLE "SystemSetting" (
     "value" TEXT NOT NULL,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "SystemSetting_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "SystemSetting_pkey" PRIMARY KEY ("key")
 );
 
 -- CreateIndex

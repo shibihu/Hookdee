@@ -65,6 +65,7 @@ export function DemoForm() {
       if (!response.ok) {
         const errorData = DemoReviewErrorSchema.safeParse(data);
         if (!errorData.success) {
+          console.error("Demo review API error response validation failed:", errorData.error, data);
           setError(th.demo.serviceUnavailable);
           return;
         }
@@ -78,6 +79,7 @@ export function DemoForm() {
 
       const success = DemoReviewSuccessSchema.safeParse(data);
       if (!success.success) {
+        console.error("Demo review API success response validation failed:", success.error, data);
         setError(th.demo.serviceUnavailable);
         return;
       }

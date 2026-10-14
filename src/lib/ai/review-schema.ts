@@ -35,7 +35,7 @@ export const ScriptCoachResultSchema = z.object({
 
 export const DemoReviewSuccessSchema = z.object({
   review: ScriptCoachResultSchema,
-  remaining: z.number().int().min(0).max(2),
+  remaining: z.number().int().nonnegative(),
 }).strict();
 
 export const DemoReviewErrorSchema = z.object({
