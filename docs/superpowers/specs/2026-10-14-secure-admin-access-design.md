@@ -38,6 +38,12 @@ Invalid or expired sessions fail closed; logout revokes the current session.
 The admin page and its API continue to use the current key-entry UI, and
 existing admin features remain available after successful authentication.
 
+## Admin secret configuration
+
+Use the configured `ADMIN_SECRET`, falling back to `AUTH_SECRET` only when the
+admin-specific secret is not set. If neither is configured, reject
+authentication instead of using a built-in development secret.
+
 ## Persistence and failure behavior
 
 Add an `AdminSession` Prisma model and migration with a unique token hash and
@@ -64,6 +70,8 @@ production). Do not log session tokens or include them in JSON responses.
   access admin APIs.
 - Protected admin APIs reject requests that provide only the admin secret or a
   bearer credential.
+- Admin authentication fails closed when neither `ADMIN_SECRET` nor
+  `AUTH_SECRET` is configured; no hardcoded default secret is accepted.
 - Existing TOTP enrollment continues to require a valid TOTP/recovery code
   before issuing a session.
 - Admin page/API tests cover the new session behavior, login, logout, 2FA, and
