@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   ADMIN_COOKIE_NAME,
   PENDING_2FA_COOKIE_NAME,
-  generateAdminTokenForSecret,
+  createAdminSession,
   getExpectedAdminSecret,
   verifyPendingChallengeToken,
 } from "@/lib/admin/auth";
@@ -87,13 +87,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const sessionToken = generateAdminTokenForSecret(secret);
-    void logger.info("Admin 2FA verification succeeded", { token: sessionToken }, "admin/auth");
+    const sessionToken = await createAdminSession();
+    void logger.info("Admin 2FA verification succeeded", {}, "admin/auth");
 
     const response = NextResponse.json({
       success: true,
       authorized: true,
-      token: sessionToken,
     });
 
     // Clear pending challenge cookie and issue full admin session cookie
@@ -103,7 +102,7 @@ export async function POST(request: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 30 * 60, // 30 minutes
     });
 
     return response;
