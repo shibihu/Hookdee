@@ -9,6 +9,6 @@
     "binding": "ASSETS"
   },
   "build": {
-    "command": "npx @opennextjs/cloudflare build"
+    "command": "npx prisma generate && npx @opennextjs/cloudflare build"
   }
 }
