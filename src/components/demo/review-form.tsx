@@ -26,15 +26,47 @@ export function DemoForm() {
   const [review, setReview] = useState<ScriptCoachResult | null>(null);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [cleanMessage, setCleanMessage] = useState("");
+  const [isCleaningCaption, setIsCleaningCaption] = useState(false);
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copyStatus, setCopyStatus] = useState<
     "idle" | "copied" | "failed"
   >("idle");
 
+  async function handleCleanCaption() {
+    if (!scriptText.trim()) return;
+    setIsCleaningCaption(true);
+    setCleanMessage("");
+    setError("");
+
+    try {
+      const response = await fetch("/api/demo/clean-caption", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scriptText }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.result) {
+          setScriptText(data.result.cleanedText);
+          setCleanMessage(th.demo.cleanCaption.success(data.result.removedItemsCount));
+        }
+      } else {
+        setCleanMessage(th.demo.cleanCaption.error);
+      }
+    } catch {
+      setCleanMessage(th.demo.cleanCaption.error);
+    } finally {
+      setIsCleaningCaption(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setCleanMessage("");
     setLoginUrl(null);
     setIsSubmitting(true);
 
@@ -115,29 +147,49 @@ export function DemoForm() {
     <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_22px_70px_-42px_rgba(28,25,23,0.35)] sm:p-7">
       <form className="space-y-5" onSubmit={submit}>
         <div>
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <label
               className="text-sm font-bold text-stone-800"
               htmlFor="scriptText"
             >
               {th.demo.scriptLabel}
             </label>
-            <span className="text-xs text-stone-400">
-              {th.demo.characterCount(scriptText.length)}
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCleanCaption}
+                disabled={isCleaningCaption || !scriptText.trim()}
+                className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 border border-emerald-200 transition hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="ล้างแฮชแท็ก ไทม์สแตมป์ และซับไตเติลออกจากสคริปต์"
+              >
+                {isCleaningCaption ? th.demo.cleanCaption.cleaning : th.demo.cleanCaption.button}
+              </button>
+              <span className="text-xs text-stone-400">
+                {th.demo.characterCount(scriptText.length)}
+              </span>
+            </div>
           </div>
           <textarea
             className="mt-2 min-h-36 w-full resize-y rounded-2xl border border-stone-300 bg-[#fdfdfb] px-4 py-3.5 text-base leading-7 text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-emerald-700 focus:ring-4 focus:ring-emerald-700/10"
             id="scriptText"
             maxLength={12_000}
-            onChange={(event) => setScriptText(event.target.value)}
+            onChange={(event) => {
+              setScriptText(event.target.value);
+              if (cleanMessage) setCleanMessage("");
+            }}
             placeholder={th.demo.scriptPlaceholder}
             required
             value={scriptText}
           />
-          <p className="mt-1.5 text-xs leading-5 text-stone-500">
-            {th.demo.scriptHint}
-          </p>
+          {cleanMessage ? (
+            <p className="mt-1.5 text-xs font-medium leading-5 text-emerald-700 bg-emerald-50/80 px-3 py-1.5 rounded-lg border border-emerald-200">
+              {cleanMessage}
+            </p>
+          ) : (
+            <p className="mt-1.5 text-xs leading-5 text-stone-500">
+              {th.demo.scriptHint}
+            </p>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
