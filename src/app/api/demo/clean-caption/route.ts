@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { CaptionCleanInputSchema, cleanCaption } from "@/lib/ai/caption-remover";
 
 export const runtime = "nodejs";
@@ -9,7 +8,7 @@ export async function POST(request: Request): Promise<Response> {
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
+      return Response.json(
         { code: "INVALID_JSON", message: "รูปแบบข้อมูล JSON ไม่ถูกต้อง" },
         { status: 400 },
       );
@@ -19,7 +18,7 @@ export async function POST(request: Request): Promise<Response> {
     if (!parseResult.success) {
       const errorMessage =
         parseResult.error.issues[0]?.message || "ข้อมูลสคริปต์ไม่ถูกต้อง";
-      return NextResponse.json(
+      return Response.json(
         { code: "INVALID_INPUT", message: errorMessage },
         { status: 400 },
       );
@@ -27,13 +26,13 @@ export async function POST(request: Request): Promise<Response> {
 
     const result = cleanCaption(parseResult.data.scriptText);
 
-    return NextResponse.json({
+    return Response.json({
       success: true,
       result,
     });
   } catch (error) {
     console.error("Caption remover failed:", error);
-    return NextResponse.json(
+    return Response.json(
       { code: "INTERNAL_ERROR", message: "ไม่สามารถล้างแคปชันได้ในขณะนี้" },
       { status: 500 },
     );
